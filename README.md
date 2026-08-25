@@ -1,12 +1,8 @@
-# Projeto_Mobile
-
-Projeto Mobile
-
-# Projeto 1 - Mercado Express (Mobile)
+# Projeto 1 - Mercado Express
 
 Este repositório contém o desenvolvimento inicial da interface mobile do projeto de E-commerce.
 
-# Cronograma de Atividades - Mobile
+# Cronograma de Atividades
 
 | Data | Conteúdo / Atividade
 
