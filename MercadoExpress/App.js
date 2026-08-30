@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View, Image, Button, Alert } from 'react-native';
+import Produto from './Componentes/Produto';
 
 export default function App() {
   return (
@@ -9,6 +10,24 @@ export default function App() {
         source={{ uri: 'https://reactnative.dev/img/tiny_logo.png' }}
         style={styles.logo}
       />
+
+      <View style={styles.listaProdutos}>
+        <Produto
+          nome="Leite Integral"
+          preco="R$ 5,50"
+          imagem={{ uri: 'https://reactnative.dev/img/tiny_logo.png' }}
+        />
+        <Produto
+          nome="Arroz 5kg"
+          preco="R$ 24,90"
+          imagem={{ uri: 'https://reactnative.dev/img/tiny_logo.png' }}
+        />
+        <Produto
+          nome="Café 500g"
+          preco="R$ 18,75"
+          imagem={{ uri: 'https://reactnative.dev/img/tiny_logo.png' }}
+        />
+      </View>
 
       <View style={styles.areaBotoes}>
         <Button
@@ -42,6 +61,9 @@ const styles = StyleSheet.create({
   logo: {
     width: 100,
     height: 100,
+    marginBottom: 30,
+  },
+  listaProdutos: {
     marginBottom: 30,
   },
   areaBotoes: {
