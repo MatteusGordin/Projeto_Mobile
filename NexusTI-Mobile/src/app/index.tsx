@@ -1,53 +1,69 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
 import BotaoPadrao from '../componentes/BotaoPadrao';
-import { autenticar } from '../servicos/api';
-import type { Credenciais } from '../servicos/api';
+import api from '../api/client';
+import { salvarToken } from '../auth/session';
+import type { CredenciaisLogin, LoginResposta, PerfilResposta } from '../types/models';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [usuario, setUsuario] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [senha, setSenha] = useState<string>('');
+  const [erro, setErro] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(false);
 
-  const entrarComoUsuario = async (): Promise<void> => {
+  const entrar = async (): Promise<void> => {
     if (carregando === true) {
       return;
     }
-    setCarregando(true);
-    try {
-      const credenciais: Credenciais = {
-        usuario: usuario,
-        senha: senha,
-      };
-      await autenticar(credenciais);
-      router.push('/novo-chamado');
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : 'Falha na autenticacao';
-      Alert.alert('Erro de login', mensagem);
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  const entrarComoTecnico = async (): Promise<void> => {
-    if (carregando === true) {
+    const emailNormalizado = email.trim();
+    const senhaNormalizada = senha.trim();
+    if (emailNormalizado === '' || senhaNormalizada === '') {
+      setErro('Informe email e senha.');
       return;
     }
+    setErro('');
     setCarregando(true);
     try {
-      const credenciais: Credenciais = {
-        usuario: usuario,
-        senha: senha,
+      const credenciais: CredenciaisLogin = {
+        email: emailNormalizado,
+        senha: senhaNormalizada,
       };
-      await autenticar(credenciais);
-      router.push('/painel');
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : 'Falha na autenticacao';
-      Alert.alert('Erro de login', mensagem);
+      const respostaLogin = await api.post<LoginResposta>('/auth/login', credenciais);
+      const token = respostaLogin.data && respostaLogin.data.token ? respostaLogin.data.token : '';
+      if (token === '') {
+        setErro('Falha na autenticacao. Tente novamente.');
+        return;
+      }
+      await salvarToken(token);
+      await api.get<PerfilResposta>('/auth/perfil');
+      router.replace('/painel');
+    } catch (falha) {
+      if (axios.isAxiosError(falha)) {
+        const status = falha.response ? falha.response.status : 0;
+        const dados = falha.response
+          ? (falha.response.data as { mensagem?: string; message?: string })
+          : undefined;
+        const mensagemApi =
+          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
+        if (mensagemApi !== '') {
+          setErro(mensagemApi);
+        } else if (status === 401) {
+          setErro('Email ou senha invalidos.');
+        } else if (status === 400) {
+          setErro('Requisicao invalida. Verifique os dados.');
+        } else {
+          setErro('Falha na autenticacao. Tente novamente.');
+        }
+      } else if (falha instanceof Error) {
+        setErro(falha.message);
+      } else {
+        setErro('Falha na autenticacao. Tente novamente.');
+      }
     } finally {
       setCarregando(false);
     }
@@ -58,10 +74,10 @@ export default function LoginScreen() {
       <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
       <View style={estilos.formulario}>
         <InputPadrao
-          rotulo="Usuario"
-          valor={usuario}
-          aoMudar={setUsuario}
-          placeholder="Digite o usuario"
+          rotulo="Email"
+          valor={email}
+          aoMudar={setEmail}
+          placeholder="voce@exemplo.com"
         />
         <InputPadrao
           rotulo="Senha"
@@ -70,14 +86,10 @@ export default function LoginScreen() {
           placeholder="Digite a senha"
           seguro={true}
         />
+        {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
         <BotaoPadrao
-          titulo={carregando === true ? 'Entrando...' : 'Entrar como Usuario'}
-          aoPressionar={entrarComoUsuario}
-          desabilitado={carregando}
-        />
-        <BotaoPadrao
-          titulo={carregando === true ? 'Entrando...' : 'Entrar como Tecnico'}
-          aoPressionar={entrarComoTecnico}
+          titulo={carregando === true ? 'Entrando...' : 'Entrar'}
+          aoPressionar={entrar}
           desabilitado={carregando}
         />
       </View>
@@ -98,5 +110,11 @@ const estilos = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
+  },
+  erro: {
+    fontSize: 14,
+    color: '#DC2626',
+    textAlign: 'center',
+    marginTop: 12,
   },
 });

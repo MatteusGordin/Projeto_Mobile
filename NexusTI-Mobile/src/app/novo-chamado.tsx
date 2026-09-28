@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
 import BotaoPadrao from '../componentes/BotaoPadrao';
-import { criarChamado } from '../servicos/api';
-import type { NovoChamado } from '../servicos/api';
+import api from '../api/client';
+import { criarChamado } from '../api/chamados';
+import type { ChamadoResposta, PerfilResposta } from '../types/models';
 
 export default function NovoChamadoScreen() {
   const router = useRouter();
-  const [equipamento, setEquipamento] = useState<string>('');
+  const [titulo, setTitulo] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
+  const [idEquipamentoTexto, setIdEquipamentoTexto] = useState<string>('');
+  const [erro, setErro] = useState<string>('');
   const [confirmacao, setConfirmacao] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(false);
 
@@ -18,19 +22,73 @@ export default function NovoChamadoScreen() {
     if (carregando === true) {
       return;
     }
+    const tituloNormalizado = titulo.trim();
+    const descricaoNormalizada = descricao.trim();
+    const equipamentoNormalizado = idEquipamentoTexto.trim();
+    if (tituloNormalizado === '' || descricaoNormalizada === '') {
+      setErro('Informe titulo e descricao.');
+      return;
+    }
+    if (tituloNormalizado.length < 3) {
+      setErro('Titulo do chamado invalido.');
+      return;
+    }
+    if (descricaoNormalizada.length < 5) {
+      setErro('Descricao do chamado invalida.');
+      return;
+    }
+    if (equipamentoNormalizado === '') {
+      setErro('Informe o id do equipamento.');
+      return;
+    }
+    const idEquipamento = Number(equipamentoNormalizado);
+    if (Number.isNaN(idEquipamento) === true || idEquipamento <= 0) {
+      setErro('Equipamento do chamado invalido.');
+      return;
+    }
+    setErro('');
+    setConfirmacao('');
     setCarregando(true);
     try {
-      const dados: NovoChamado = {
-        equipamento: equipamento,
-        descricao: descricao,
+      const perfil = await api.get<PerfilResposta>('/auth/perfil');
+      const idSolicitante = perfil.data && perfil.data.id ? perfil.data.id : 0;
+      if (idSolicitante <= 0) {
+        setErro('Solicitante do chamado invalido.');
+        return;
+      }
+      const dados: Partial<ChamadoResposta> = {
+        titulo: tituloNormalizado,
+        descricao: descricaoNormalizada,
+        idSolicitante: idSolicitante,
+        idEquipamento: idEquipamento,
       };
       const criado = await criarChamado(dados);
-      setConfirmacao('Chamado registrado para ' + criado.equipamento);
-      setEquipamento('');
+      setConfirmacao('Chamado ' + String(criado.id) + ' criado com sucesso.');
+      setTitulo('');
       setDescricao('');
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : 'Falha ao criar chamado';
-      Alert.alert('Erro ao abrir chamado', mensagem);
+      setIdEquipamentoTexto('');
+    } catch (falha) {
+      if (axios.isAxiosError(falha)) {
+        const status = falha.response ? falha.response.status : 0;
+        const dados = falha.response
+          ? (falha.response.data as { mensagem?: string; message?: string })
+          : undefined;
+        const mensagemApi =
+          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
+        if (mensagemApi !== '') {
+          setErro(mensagemApi);
+        } else if (status === 401) {
+          setErro('Sessao expirada. Entre novamente.');
+        } else if (status === 400) {
+          setErro('Requisicao invalida. Verifique os dados.');
+        } else {
+          setErro('Falha ao criar chamado. Tente novamente.');
+        }
+      } else if (falha instanceof Error) {
+        setErro(falha.message);
+      } else {
+        setErro('Falha ao criar chamado. Tente novamente.');
+      }
     } finally {
       setCarregando(false);
     }
@@ -45,10 +103,10 @@ export default function NovoChamadoScreen() {
       <Cabecalho titulo="Novo Chamado" subtitulo="Informe o equipamento e o problema" />
       <View style={estilos.formulario}>
         <InputPadrao
-          rotulo="Equipamento"
-          valor={equipamento}
-          aoMudar={setEquipamento}
-          placeholder="Exemplo: PC Recepcao 03"
+          rotulo="Titulo"
+          valor={titulo}
+          aoMudar={setTitulo}
+          placeholder="Exemplo: Impressora Recepcao"
         />
         <InputPadrao
           rotulo="Descricao do problema"
@@ -57,6 +115,13 @@ export default function NovoChamadoScreen() {
           placeholder="Descreva o problema"
           multilinha={true}
         />
+        <InputPadrao
+          rotulo="Id Equipamento"
+          valor={idEquipamentoTexto}
+          aoMudar={setIdEquipamentoTexto}
+          placeholder="Exemplo: 1"
+        />
+        {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
         <BotaoPadrao
           titulo={carregando === true ? 'Enviando...' : 'Abrir Chamado'}
           aoPressionar={enviarChamado}
@@ -82,6 +147,12 @@ const estilos = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
+  },
+  erro: {
+    fontSize: 14,
+    color: '#DC2626',
+    textAlign: 'center',
+    marginTop: 12,
   },
   confirmacao: {
     fontSize: 14,
