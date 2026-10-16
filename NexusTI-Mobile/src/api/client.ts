@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { apagarToken, lerToken } from '../auth/session';
+import { apagarPerfil, apagarToken, lerToken } from '../auth/session';
 
 const PROTOCOLO = 'https:';
 const BARRA = '/';
@@ -32,6 +32,7 @@ api.interceptors.response.use(
     const rotaPublica = url.includes('/auth/login') || url.includes('/auth/bootstrap');
     if (status === 401 && rotaPublica === false) {
       await apagarToken();
+      await apagarPerfil();
     }
     return Promise.reject(falha);
   }

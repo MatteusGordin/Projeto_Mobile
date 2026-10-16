@@ -30,12 +30,12 @@ const estilos = StyleSheet.create({
   titulo: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#F8FAFC',
     textAlign: 'center',
   },
   subtitulo: {
     fontSize: 14,
-    color: '#4B5563',
+    color: '#94A3B8',
     textAlign: 'center',
     marginTop: 4,
   },

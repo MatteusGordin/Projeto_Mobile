@@ -18,6 +18,14 @@ export async function criarChamado(dados: Partial<ChamadoResposta>): Promise<Cha
   return resposta.data;
 }
 
+export async function atualizarChamado(
+  id: number,
+  dados: Partial<ChamadoResposta>
+): Promise<ChamadoResposta> {
+  const resposta = await api.put<ChamadoResposta>('/chamados' + '/' + String(id), dados);
+  return resposta.data;
+}
+
 export async function obterMetricas(): Promise<MetricasChamados> {
   const resposta = await api.get<MetricasChamados>('/chamados' + '/' + 'metricas');
   return resposta.data;

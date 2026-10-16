@@ -25,6 +25,7 @@ export default function InputPadrao({
         value={valor}
         onChangeText={aoMudar}
         placeholder={placeholder}
+        placeholderTextColor="#94A3B8"
         secureTextEntry={seguro === true}
         multiline={multilinha === true}
       />
@@ -42,16 +43,17 @@ const estilos = StyleSheet.create({
   rotulo: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#F8FAFC',
     marginBottom: 8,
   },
   campo: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#334155',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    backgroundColor: '#F9FAFB',
+    color: '#F8FAFC',
+    backgroundColor: '#1E293B',
   },
   campoMultilinha: {
     minHeight: 96,

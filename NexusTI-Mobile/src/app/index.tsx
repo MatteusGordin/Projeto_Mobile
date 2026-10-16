@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
 import BotaoPadrao from '../componentes/BotaoPadrao';
 import api from '../api/client';
-import { salvarToken } from '../auth/session';
+import { apagarPerfil, apagarToken, lerToken, salvarPerfil, salvarToken } from '../auth/session';
 import type { CredenciaisLogin, LoginResposta, PerfilResposta } from '../types/models';
 
 export default function LoginScreen() {
@@ -15,6 +15,40 @@ export default function LoginScreen() {
   const [senha, setSenha] = useState<string>('');
   const [erro, setErro] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(false);
+  const [verificando, setVerificando] = useState<boolean>(true);
+
+  useEffect(() => {
+    let montado = true;
+    const validarSessao = async (): Promise<void> => {
+      try {
+        const token = await lerToken();
+        if (token === null || token === '') {
+          return;
+        }
+        const respostaPerfil = await api.get<PerfilResposta>('/auth/perfil');
+        await salvarPerfil(respostaPerfil.data);
+        if (montado === true) {
+          router.replace('/painel');
+        }
+      } catch (falha) {
+        if (axios.isAxiosError(falha)) {
+          const status = falha.response ? falha.response.status : 0;
+          if (status === 401) {
+            await apagarToken();
+            await apagarPerfil();
+          }
+        }
+      } finally {
+        if (montado === true) {
+          setVerificando(false);
+        }
+      }
+    };
+    validarSessao();
+    return () => {
+      montado = false;
+    };
+  }, []);
 
   const entrar = async (): Promise<void> => {
     if (carregando === true) {
@@ -40,7 +74,8 @@ export default function LoginScreen() {
         return;
       }
       await salvarToken(token);
-      await api.get<PerfilResposta>('/auth/perfil');
+      const respostaPerfil = await api.get<PerfilResposta>('/auth/perfil');
+      await salvarPerfil(respostaPerfil.data);
       router.replace('/painel');
     } catch (falha) {
       if (axios.isAxiosError(falha)) {
@@ -70,41 +105,56 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={estilos.container}>
-      <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
-      <View style={estilos.formulario}>
-        <InputPadrao
-          rotulo="Email"
-          valor={email}
-          aoMudar={setEmail}
-          placeholder="voce@exemplo.com"
-        />
-        <InputPadrao
-          rotulo="Senha"
-          valor={senha}
-          aoMudar={setSenha}
-          placeholder="Digite a senha"
-          seguro={true}
-        />
-        {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
-        <BotaoPadrao
-          titulo={carregando === true ? 'Entrando...' : 'Entrar'}
-          aoPressionar={entrar}
-          desabilitado={carregando}
-        />
-      </View>
-    </View>
+    <KeyboardAvoidingView
+      style={estilos.tela}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={24}
+    >
+      <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
+        <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
+        {verificando === true ? (
+          <Text style={estilos.verificando}>Verificando sessao...</Text>
+        ) : (
+          <View style={estilos.formulario}>
+            <InputPadrao
+              rotulo="Email"
+              valor={email}
+              aoMudar={setEmail}
+              placeholder="voce@exemplo.com"
+            />
+            <InputPadrao
+              rotulo="Senha"
+              valor={senha}
+              aoMudar={setSenha}
+              placeholder="Digite a senha"
+              seguro={true}
+            />
+            {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
+            <BotaoPadrao
+              titulo={carregando === true ? 'Entrando...' : 'Entrar'}
+              aoPressionar={entrar}
+              desabilitado={carregando}
+            />
+          </View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const estilos = StyleSheet.create({
-  container: {
+  tela: {
     flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  container: {
+    flexGrow: 1,
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'stretch',
     padding: 24,
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 48,
+    backgroundColor: '#0F172A',
   },
   formulario: {
     flexDirection: 'column',
@@ -113,7 +163,13 @@ const estilos = StyleSheet.create({
   },
   erro: {
     fontSize: 14,
-    color: '#DC2626',
+    color: '#F87171',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  verificando: {
+    fontSize: 14,
+    color: '#94A3B8',
     textAlign: 'center',
     marginTop: 12,
   },

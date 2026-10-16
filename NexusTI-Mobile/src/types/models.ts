@@ -65,3 +65,28 @@ export interface MetricasChamados {
   abertos: number;
   fechados: number;
 }
+
+export interface Equipamento {
+  id: number;
+  patrimonio: string | null;
+  descricao: string | null;
+  marca: string | null;
+  modelo: string | null;
+  idSetor: number | null;
+  status: string | null;
+}
+
+export interface Setor {
+  id: number;
+  nome: string | null;
+  sigla: string | null;
+}
+
+export interface Prioridade {
+  id: number;
+  nome: string | null;
+  cor: string | null;
+  ordem: number | null;
+  ativa: boolean | null;
+  slaHoras: number | null;
+}

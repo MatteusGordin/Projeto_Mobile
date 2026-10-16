@@ -1,70 +1,119 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import CardChamado from '../componentes/CardChamado';
 import BotaoPadrao from '../componentes/BotaoPadrao';
 import { listarChamados, obterMetricas } from '../api/chamados';
-import type { ChamadoResposta, MetricasChamados } from '../types/models';
+import { apagarPerfil, apagarToken, lerPerfil } from '../auth/session';
+import type { ChamadoResposta, MetricasChamados, PerfilResposta } from '../types/models';
 
 export default function PainelScreen() {
   const router = useRouter();
   const [chamados, setChamados] = useState<ChamadoResposta[]>([]);
+  const [perfil, setPerfil] = useState<PerfilResposta | null>(null);
   const [abertos, setAbertos] = useState<number>(0);
   const [fechados, setFechados] = useState<number>(0);
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string>('');
 
-  useEffect(() => {
-    const carregar = async (): Promise<void> => {
-      setCarregando(true);
-      setErro('');
-      try {
-        const resultado = await Promise.all([
-          listarChamados(0, 20),
-          obterMetricas().catch(() => null),
-        ]);
-        const pagina = resultado[0];
-        const metricas = resultado[1] as MetricasChamados | null;
-        const conteudo = pagina && pagina.content ? pagina.content : [];
-        setChamados(conteudo);
-        if (metricas !== null && metricas !== undefined) {
-          setAbertos(typeof metricas.abertos === 'number' ? metricas.abertos : 0);
-          setFechados(typeof metricas.fechados === 'number' ? metricas.fechados : 0);
-        }
-        if (conteudo.length === 0) {
-          setErro('Nenhum chamado encontrado.');
-        }
-      } catch (falha) {
-        if (axios.isAxiosError(falha)) {
-          const status = falha.response ? falha.response.status : 0;
-          const dados = falha.response
-            ? (falha.response.data as { mensagem?: string; message?: string })
-            : undefined;
-          const mensagemApi =
-            dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-          if (mensagemApi !== '') {
-            setErro(mensagemApi);
-          } else if (status === 401) {
-            setErro('Sessao expirada. Entre novamente.');
+  useFocusEffect(
+    useCallback(() => {
+      let ativo = true;
+      const carregar = async (): Promise<void> => {
+        setCarregando(true);
+        setErro('');
+        try {
+          const resultado = await Promise.all([
+            listarChamados(0, 20),
+            obterMetricas().catch(() => null),
+            lerPerfil().catch(() => null),
+          ]);
+          if (ativo === false) {
+            return;
+          }
+          const pagina = resultado[0];
+          const metricas = resultado[1] as MetricasChamados | null;
+          const perfilSalvo = resultado[2] as PerfilResposta | null;
+          const conteudo = pagina && pagina.content ? pagina.content : [];
+          setChamados(conteudo);
+          setPerfil(perfilSalvo);
+          if (metricas !== null && metricas !== undefined) {
+            setAbertos(typeof metricas.abertos === 'number' ? metricas.abertos : 0);
+            setFechados(typeof metricas.fechados === 'number' ? metricas.fechados : 0);
+          }
+          if (conteudo.length === 0) {
+            setErro('Nenhum chamado encontrado.');
+          }
+        } catch (falha) {
+          if (ativo === false) {
+            return;
+          }
+          if (axios.isAxiosError(falha)) {
+            const status = falha.response ? falha.response.status : 0;
+            const dados = falha.response
+              ? (falha.response.data as { mensagem?: string; message?: string })
+              : undefined;
+            const mensagemApi =
+              dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
+            if (mensagemApi !== '') {
+              setErro(mensagemApi);
+            } else if (status === 401) {
+              setErro('Sessao expirada. Entre novamente.');
+            } else {
+              setErro('Falha ao listar chamados. Tente novamente.');
+            }
+          } else if (falha instanceof Error) {
+            setErro(falha.message);
           } else {
             setErro('Falha ao listar chamados. Tente novamente.');
           }
-        } else if (falha instanceof Error) {
-          setErro(falha.message);
-        } else {
-          setErro('Falha ao listar chamados. Tente novamente.');
+        } finally {
+          if (ativo === true) {
+            setCarregando(false);
+          }
         }
-      } finally {
-        setCarregando(false);
-      }
-    };
-    carregar();
-  }, []);
+      };
+      carregar();
+      return () => {
+        ativo = false;
+      };
+    }, [])
+  );
 
-  const voltar = (): void => {
-    router.back();
+  const irParaDetalhe = (id: number): void => {
+    router.push({ pathname: '/detalhe', params: { id: String(id) } } as never);
+  };
+
+  const irParaNovoChamado = (): void => {
+    router.push({ pathname: '/novo-chamado' } as never);
+  };
+
+  const irParaUsuarios = (): void => {
+    router.push({ pathname: '/admin/usuarios' } as never);
+  };
+
+  const irParaEquipamentos = (): void => {
+    router.push({ pathname: '/admin/equipamentos' } as never);
+  };
+
+  const irParaSetores = (): void => {
+    router.push({ pathname: '/admin/setores' } as never);
+  };
+
+  const irParaPrioridades = (): void => {
+    router.push({ pathname: '/admin/prioridades' } as never);
+  };
+
+  const irParaChamados = (): void => {
+    router.push('/chamados' as never);
+  };
+
+  const sair = async (): Promise<void> => {
+    await apagarToken();
+    await apagarPerfil();
+    router.replace('/');
   };
 
   const equipamentoDe = (item: ChamadoResposta): string => {
@@ -78,7 +127,8 @@ export default function PainelScreen() {
   };
 
   return (
-    <View style={estilos.container}>
+    <View style={estilos.tela}>
+      <ScrollView contentContainerStyle={estilos.container}>
       <Cabecalho titulo="Painel Tecnico" subtitulo="Chamados abertos" />
       <View style={estilos.metricas}>
         <View style={estilos.cartaoMetrica}>
@@ -90,6 +140,40 @@ export default function PainelScreen() {
           <Text style={estilos.rotuloMetrica}>Chamados Fechados</Text>
         </View>
       </View>
+      <View style={estilos.navegacao}>
+        <BotaoPadrao
+          titulo="VER TODOS OS CHAMADOS"
+          aoPressionar={irParaChamados}
+          desabilitado={carregando}
+        />
+      </View>
+      {perfil !== null && (perfil.perfil === 'ADMIN' || perfil.perfil === 'TECNICO') ? (
+        <View style={estilos.admin}>
+          <Text style={estilos.tituloAdmin}>Administracao</Text>
+          {perfil.perfil === 'ADMIN' ? (
+            <BotaoPadrao
+              titulo="Gerenciar Usuarios"
+              aoPressionar={irParaUsuarios}
+              desabilitado={carregando}
+            />
+          ) : null}
+          <BotaoPadrao
+            titulo="Gerenciar Equipamentos"
+            aoPressionar={irParaEquipamentos}
+            desabilitado={carregando}
+          />
+          <BotaoPadrao
+            titulo="Gerenciar Setores"
+            aoPressionar={irParaSetores}
+            desabilitado={carregando}
+          />
+          <BotaoPadrao
+            titulo="Gerenciar Prioridades"
+            aoPressionar={irParaPrioridades}
+            desabilitado={carregando}
+          />
+        </View>
+      ) : null}
       <View style={estilos.lista}>
         {carregando === true ? (
           <Text style={estilos.carregando}>Carregando chamados...</Text>
@@ -102,26 +186,36 @@ export default function PainelScreen() {
               equipamento={equipamentoDe(item)}
               descricao={item.descricao}
               status={item.status}
+              prioridade={item.prioridade}
+              dataAbertura={item.dataAbertura}
+              corPrioridade={item.corPrioridade}
+              aoPressionar={() => irParaDetalhe(item.id)}
             />
           ))
         )}
       </View>
       {erro !== '' && chamados.length > 0 ? <Text style={estilos.erro}>{erro}</Text> : null}
       <View style={estilos.rodape}>
-        <BotaoPadrao titulo="Voltar" aoPressionar={voltar} desabilitado={carregando} />
+        <BotaoPadrao titulo="Novo Chamado" aoPressionar={irParaNovoChamado} desabilitado={carregando} />
+        <BotaoPadrao titulo="Sair" aoPressionar={sair} desabilitado={carregando} />
       </View>
+      </ScrollView>
     </View>
   );
 }
 
 const estilos = StyleSheet.create({
-  container: {
+  tela: {
     flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  container: {
     flexDirection: 'column',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
     padding: 24,
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 48,
+    backgroundColor: '#0F172A',
   },
   metricas: {
     flexDirection: 'row',
@@ -137,20 +231,20 @@ const estilos = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#334155',
     borderRadius: 8,
     padding: 16,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#1E293B',
   },
   numeroMetrica: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#F8FAFC',
     textAlign: 'center',
   },
   rotuloMetrica: {
     fontSize: 12,
-    color: '#4B5563',
+    color: '#94A3B8',
     textAlign: 'center',
     marginTop: 4,
   },
@@ -160,14 +254,37 @@ const estilos = StyleSheet.create({
     alignItems: 'stretch',
     gap: 12,
   },
+  admin: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: '#1E293B',
+    marginBottom: 12,
+  },
+  tituloAdmin: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#F8FAFC',
+    textAlign: 'left',
+  },
+  navegacao: {
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    marginBottom: 12,
+  },
   carregando: {
     fontSize: 14,
-    color: '#4B5563',
+    color: '#94A3B8',
     textAlign: 'center',
   },
   erro: {
     fontSize: 14,
-    color: '#DC2626',
+    color: '#F87171',
     textAlign: 'center',
     marginTop: 12,
   },
