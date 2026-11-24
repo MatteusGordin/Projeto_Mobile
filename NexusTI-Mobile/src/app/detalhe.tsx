@@ -1,12 +1,47 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
+import InputPadrao from '../componentes/InputPadrao';
 import BotaoPadrao from '../componentes/BotaoPadrao';
-import { atualizarChamado, buscarChamadoPorId } from '../api/chamados';
-import { apagarPerfil, apagarToken, lerPerfil } from '../auth/session';
+import BadgeStatus from '../componentes/BadgeStatus';
+import EstadoCarregando from '../componentes/EstadoCarregando';
+import EstadoErro from '../componentes/EstadoErro';
+import { buscarChamadoPorId, concluirChamado, excluirChamado } from '../api/chamados';
+import { lerPerfil } from '../auth/session';
+import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
+import { formatarDataIso } from '../utils/formatacao';
 import type { ChamadoResposta, PerfilResposta } from '../types/models';
+
+type AcaoChamado = 'concluir' | 'excluir';
+
+function mensagemErro(falha: unknown, acao: AcaoChamado, padrao: string): string {
+  if (axios.isAxiosError(falha)) {
+    const dados = falha.response ? (falha.response.data as { mensagem?: string }) : undefined;
+    if (dados !== undefined && typeof dados.mensagem === 'string' && dados.mensagem !== '') {
+      return dados.mensagem;
+    }
+    const status = falha.response ? falha.response.status : 0;
+    if (status === 403) {
+      return acao === 'concluir'
+        ? 'Apenas administradores e técnicos podem concluir chamados.'
+        : 'Você não tem permissão para excluir este chamado.';
+    }
+    if (status === 404) {
+      return 'Chamado não encontrado.';
+    }
+    if (status === 401) {
+      return 'Sessão expirada. Entre novamente.';
+    }
+    if (status === 400) {
+      return acao === 'concluir'
+        ? 'Informe a solução com pelo menos 5 caracteres.'
+        : 'Não foi possível excluir o chamado.';
+    }
+  }
+  return padrao;
+}
 
 export default function DetalheScreen() {
   const router = useRouter();
@@ -25,259 +60,266 @@ export default function DetalheScreen() {
     const texto = Array.isArray(bruto) ? bruto[0] : bruto;
     const numerico = Number(texto);
     if (texto === undefined || texto === null || Number.isNaN(numerico) === true || numerico <= 0) {
-      setErro('Chamado invalido.');
+      setErro('Chamado inválido.');
       setCarregando(false);
       return;
     }
     setIdChamado(numerico);
+    let ativo = true;
     const carregar = async (): Promise<void> => {
       setCarregando(true);
       setErro('');
       try {
-        const resultado = await buscarChamadoPorId(numerico);
-        setChamado(resultado);
-        const perfilSalvo = await lerPerfil();
+        const [resposta, perfilSalvo] = await Promise.all([
+          buscarChamadoPorId(numerico),
+          lerPerfil().catch(() => null),
+        ]);
+        if (ativo === false) {
+          return;
+        }
+        setChamado(resposta);
         setPerfil(perfilSalvo);
+        if (resposta.solucao !== null && resposta.solucao !== '') {
+          setSolucao(resposta.solucao);
+        }
       } catch (falha) {
-        if (axios.isAxiosError(falha)) {
-          const status = falha.response ? falha.response.status : 0;
-          const dados = falha.response
-            ? (falha.response.data as { mensagem?: string; message?: string })
-            : undefined;
-          const mensagemApi =
-            dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-          if (mensagemApi !== '') {
-            setErro(mensagemApi);
-          } else if (status === 401) {
-            setErro('Sessao expirada. Entre novamente.');
-          } else if (status === 404) {
-            setErro('Chamado nao encontrado.');
-          } else {
-            setErro('Falha ao carregar chamado. Tente novamente.');
-          }
-        } else if (falha instanceof Error) {
-          setErro(falha.message);
-        } else {
-          setErro('Falha ao carregar chamado. Tente novamente.');
+        if (ativo === true) {
+          setErro(mensagemErro(falha, 'concluir', 'Falha ao carregar o chamado. Tente novamente.'));
         }
       } finally {
-        setCarregando(false);
+        if (ativo === true) {
+          setCarregando(false);
+        }
       }
     };
-    carregar();
+    void carregar();
+    return () => {
+      ativo = false;
+    };
   }, [parametros.id]);
 
   const concluir = async (): Promise<void> => {
     if (salvando === true || chamado === null || idChamado <= 0) {
       return;
     }
-    if (perfil !== null && perfil.perfil === 'USUARIO') {
-      setErro('Perfil sem permissao para concluir.');
-      return;
-    }
     const textoNormalizado = solucao.trim();
-    if (textoNormalizado === '') {
-      setErro('Informe a solucao.');
-      return;
-    }
     if (textoNormalizado.length < 5) {
-      setErro('Solucao invalida.');
+      setErro('Informe a solução com pelo menos 5 caracteres.');
       return;
     }
     setErro('');
     setConfirmacao('');
     setSalvando(true);
     try {
-      const atualizado = await atualizarChamado(idChamado, {
-        status: 'FECHADO',
-        solucao: textoNormalizado,
-      });
+      const atualizado = await concluirChamado(idChamado, textoNormalizado);
       setChamado(atualizado);
       setSolucao('');
-      setConfirmacao('Chamado ' + String(atualizado.id) + ' concluido com sucesso.');
+      setConfirmacao('Chamado concluído com sucesso.');
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 400) {
-          setErro('Requisicao invalida. Verifique os dados.');
-        } else {
-          setErro('Falha ao concluir chamado. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha ao concluir chamado. Tente novamente.');
-      }
+      setErro(mensagemErro(falha, 'concluir', 'Falha ao concluir o chamado. Tente novamente.'));
     } finally {
       setSalvando(false);
     }
+  };
+
+  const excluir = async (): Promise<void> => {
+    if (idChamado <= 0) {
+      return;
+    }
+    setErro('');
+    setSalvando(true);
+    try {
+      await excluirChamado(idChamado);
+      router.back();
+    } catch (falha) {
+      setErro(mensagemErro(falha, 'excluir', 'Falha ao excluir o chamado. Tente novamente.'));
+      setSalvando(false);
+    }
+  };
+
+  const confirmarExclusao = (): void => {
+    Alert.alert('Excluir chamado', 'Deseja excluir este chamado?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: () => void excluir() },
+    ]);
   };
 
   const voltar = (): void => {
     router.back();
   };
 
-  const sair = async (): Promise<void> => {
-    await apagarToken();
-    await apagarPerfil();
-    router.replace('/');
-  };
-
-  const textoDe = (valor: string | null): string => {
-    if (valor !== null && valor !== undefined && valor !== '') {
-      return valor;
-    }
-    return 'Nao informado';
-  };
-
-  const numeroDe = (valor: number | null): string => {
-    if (valor !== null && valor !== undefined) {
-      return String(valor);
-    }
-    return 'Nao informado';
-  };
+  const equipe = perfil !== null && (perfil.perfil === 'ADMIN' || perfil.perfil === 'TECNICO');
+  const podeConcluir = chamado !== null && chamado.status === 'ABERTO' && equipe;
+  const podeExcluir =
+    chamado !== null &&
+    perfil !== null &&
+    (equipe === true || chamado.idSolicitante === perfil.id);
+  const nomeSetor =
+    chamado !== null && chamado.nomeSetorSolicitante !== null && chamado.nomeSetorSolicitante !== ''
+      ? chamado.nomeSetorSolicitante +
+        (chamado.siglaSetorSolicitante !== null && chamado.siglaSetorSolicitante !== ''
+          ? ' (' + chamado.siglaSetorSolicitante + ')'
+          : '')
+      : 'Não informado';
 
   return (
-    <View style={estilos.tela}>
-      <ScrollView contentContainerStyle={estilos.container}>
-      <Cabecalho titulo="Detalhe Chamado" subtitulo="Informacoes completas" />
-      {carregando === true ? (
-        <Text style={estilos.carregando}>Carregando chamado...</Text>
-      ) : chamado === null ? (
-        <Text style={estilos.erro}>{erro !== '' ? erro : 'Chamado nao encontrado.'}</Text>
-      ) : (
-        <View style={estilos.cartao}>
-          <Text style={estilos.titulo}>{textoDe(chamado.titulo)}</Text>
-          <Text style={estilos.descricao}>{textoDe(chamado.descricao)}</Text>
-          <Text style={estilos.linha}>{'Status: ' + textoDe(chamado.status)}</Text>
-          <Text style={estilos.linha}>{'Abertura: ' + textoDe(chamado.dataAbertura)}</Text>
-          <Text style={estilos.linha}>{'Prioridade: ' + textoDe(chamado.prioridade)}</Text>
-          <Text style={estilos.linha}>{'Equipamento: ' + numeroDe(chamado.idEquipamento)}</Text>
-          <Text style={estilos.linha}>{'Solicitante: ' + numeroDe(chamado.idSolicitante)}</Text>
-          <Text style={estilos.linha}>{'Tecnico: ' + numeroDe(chamado.idTecnico)}</Text>
-          <Text style={estilos.linha}>{'Solucao: ' + textoDe(chamado.solucao)}</Text>
-          {chamado.status === 'ABERTO' && (perfil === null || perfil.perfil !== 'USUARIO') ? (
-            <View style={estilos.blocoSolucao}>
-              <Text style={estilos.rotulo}>Solucao</Text>
-              <TextInput
-                style={estilos.campo}
-                value={solucao}
-                onChangeText={setSolucao}
-                placeholder="Descreva a solucao"
-                placeholderTextColor="#94A3B8"
-                multiline={true}
-              />
-              <BotaoPadrao
-                titulo={salvando === true ? 'Concluindo...' : 'Concluir Chamado'}
-                aoPressionar={concluir}
-                desabilitado={salvando}
-              />
+    <KeyboardAvoidingView
+      style={estilos.tela}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={24}
+    >
+      <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
+        <Cabecalho titulo="Detalhe do chamado" subtitulo="Informações completas" />
+        {carregando === true ? (
+          <EstadoCarregando mensagem="Carregando chamado..." />
+        ) : chamado === null ? (
+          <EstadoErro
+            mensagem={erro !== '' ? erro : 'Chamado não encontrado.'}
+            aoTentarNovamente={voltar}
+          />
+        ) : (
+          <View style={estilos.cartao}>
+            <Text style={estilos.titulo}>{chamado.titulo}</Text>
+            <View style={estilos.selos}>
+              <BadgeStatus valor={chamado.status} />
+              <BadgeStatus tipo="prioridade" valor={chamado.prioridade} cor={chamado.corPrioridade} />
             </View>
+            <Text style={estilos.descricao}>{chamado.descricao}</Text>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Solicitante</Text>
+              <Text style={estilos.valor}>
+                {chamado.nomeSolicitante !== null && chamado.nomeSolicitante !== ''
+                  ? chamado.nomeSolicitante
+                  : 'Não informado'}
+              </Text>
+            </View>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Setor</Text>
+              <Text style={estilos.valor}>{nomeSetor}</Text>
+            </View>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Equipamento</Text>
+              <Text style={estilos.valor}>
+                {chamado.idEquipamento !== null ? '#' + String(chamado.idEquipamento) : 'Não informado'}
+              </Text>
+            </View>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Abertura</Text>
+              <Text style={estilos.valor}>{formatarDataIso(chamado.dataAbertura)}</Text>
+            </View>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Fechamento</Text>
+              <Text style={estilos.valor}>{formatarDataIso(chamado.dataFechamento)}</Text>
+            </View>
+            <View style={estilos.linha}>
+              <Text style={estilos.rotulo}>Solução</Text>
+              <Text style={estilos.valor}>
+                {chamado.solucao !== null && chamado.solucao !== '' ? chamado.solucao : 'Não informada'}
+              </Text>
+            </View>
+            {podeConcluir === true ? (
+              <View style={estilos.blocoSolucao}>
+                <InputPadrao
+                  rotulo="Solução"
+                  valor={solucao}
+                  aoMudar={setSolucao}
+                  placeholder="Descreva a solução"
+                  multilinha={true}
+                  erro={erro !== '' ? erro : undefined}
+                />
+                <BotaoPadrao
+                  titulo={salvando === true ? 'Concluindo...' : 'Concluir chamado'}
+                  aoPressionar={() => void concluir()}
+                  carregando={salvando}
+                />
+              </View>
+            ) : null}
+          </View>
+        )}
+        {erro !== '' && chamado !== null && podeConcluir === false ? (
+          <Text style={estilos.erro}>{erro}</Text>
+        ) : null}
+        {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
+        <View style={estilos.rodape}>
+          <BotaoPadrao titulo="Voltar" aoPressionar={voltar} variante="fantasma" />
+          {podeExcluir === true ? (
+            <BotaoPadrao
+              titulo="Excluir chamado"
+              aoPressionar={confirmarExclusao}
+              variante="perigo"
+              desabilitado={salvando}
+            />
           ) : null}
         </View>
-      )}
-      {erro !== '' && chamado !== null ? <Text style={estilos.erro}>{erro}</Text> : null}
-      {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
-      <View style={estilos.rodape}>
-        <BotaoPadrao titulo="Sair" aoPressionar={sair} desabilitado={salvando} />
-        <BotaoPadrao titulo="Voltar" aoPressionar={voltar} desabilitado={salvando} />
-      </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const estilos = StyleSheet.create({
   tela: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: CORES.fundo,
   },
   container: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#0F172A',
+    padding: ESPACAMENTO.xl,
+    paddingBottom: ESPACAMENTO.xxl,
+    backgroundColor: CORES.fundo,
   },
   cartao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
   },
   titulo: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F8FAFC',
-    textAlign: 'left',
+    color: CORES.texto,
+  },
+  selos: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: ESPACAMENTO.sm,
+    marginTop: ESPACAMENTO.md,
   },
   descricao: {
     fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 8,
+    color: CORES.textoSecundario,
+    marginTop: ESPACAMENTO.md,
   },
   linha: {
-    fontSize: 14,
-    color: '#F8FAFC',
-    marginTop: 8,
-  },
-  blocoSolucao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    marginTop: 16,
+    marginTop: ESPACAMENTO.md,
   },
   rotulo: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#F8FAFC',
-    marginBottom: 8,
+    color: CORES.textoSecundario,
   },
-  campo: {
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#F8FAFC',
-    backgroundColor: '#1E293B',
-    minHeight: 96,
-  },
-  carregando: {
+  valor: {
     fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
+    color: CORES.texto,
+    marginTop: ESPACAMENTO.xs,
+  },
+  blocoSolucao: {
+    marginTop: ESPACAMENTO.xl,
+    gap: ESPACAMENTO.sm,
   },
   erro: {
     fontSize: 14,
-    color: '#F87171',
+    color: CORES.perigo,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: ESPACAMENTO.md,
   },
   confirmacao: {
     fontSize: 14,
-    color: '#4ADE80',
+    color: CORES.sucesso,
     textAlign: 'center',
-    marginTop: 12,
+    marginTop: ESPACAMENTO.md,
   },
   rodape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    marginTop: 24,
+    gap: ESPACAMENTO.sm,
+    marginTop: ESPACAMENTO.xl,
   },
 });

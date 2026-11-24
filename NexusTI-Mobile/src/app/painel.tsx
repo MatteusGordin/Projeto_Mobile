@@ -1,13 +1,33 @@
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import CardChamado from '../componentes/CardChamado';
 import BotaoPadrao from '../componentes/BotaoPadrao';
-import { listarChamados, obterMetricas } from '../api/chamados';
+import BadgeStatus from '../componentes/BadgeStatus';
+import EstadoCarregando from '../componentes/EstadoCarregando';
+import EstadoErro from '../componentes/EstadoErro';
+import EstadoVazio from '../componentes/EstadoVazio';
+import { listarChamados, obterMetricas, obterMetricasPrioridades } from '../api/chamados';
 import { apagarPerfil, apagarToken, lerPerfil } from '../auth/session';
-import type { ChamadoResposta, MetricasChamados, PerfilResposta } from '../types/models';
+import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
+import type { ChamadoResposta, MetricasChamados, MetricasPrioridades, PerfilResposta } from '../types/models';
+
+function mensagemErro(falha: unknown): string {
+  if (axios.isAxiosError(falha)) {
+    const dados = falha.response ? (falha.response.data as { mensagem?: string }) : undefined;
+    if (dados !== undefined && typeof dados.mensagem === 'string' && dados.mensagem !== '') {
+      return dados.mensagem;
+    }
+    const status = falha.response ? falha.response.status : 0;
+    if (status === 401) {
+      return 'Sessão expirada. Entre novamente.';
+    }
+  }
+  return 'Falha ao carregar o painel. Tente novamente.';
+}
 
 export default function PainelScreen() {
   const router = useRouter();
@@ -15,71 +35,43 @@ export default function PainelScreen() {
   const [perfil, setPerfil] = useState<PerfilResposta | null>(null);
   const [abertos, setAbertos] = useState<number>(0);
   const [fechados, setFechados] = useState<number>(0);
+  const [porPrioridade, setPorPrioridade] = useState<MetricasPrioridades>({});
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string>('');
 
+  const carregar = useCallback(async (): Promise<void> => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const resultado = await Promise.all([
+        listarChamados({ page: 0, size: 20, sort: 'dataAbertura,DESC' }),
+        obterMetricas().catch(() => null),
+        obterMetricasPrioridades().catch(() => ({})),
+        lerPerfil().catch(() => null),
+      ]);
+      const pagina = resultado[0];
+      const metricas = resultado[1] as MetricasChamados | null;
+      const metricasPrioridade = resultado[2] as MetricasPrioridades;
+      const perfilSalvo = resultado[3] as PerfilResposta | null;
+      setChamados(pagina && Array.isArray(pagina.content) ? pagina.content : []);
+      setPerfil(perfilSalvo);
+      if (metricas !== null) {
+        setAbertos(typeof metricas.abertos === 'number' ? metricas.abertos : 0);
+        setFechados(typeof metricas.fechados === 'number' ? metricas.fechados : 0);
+      }
+      setPorPrioridade(metricasPrioridade !== null && typeof metricasPrioridade === 'object' ? metricasPrioridade : {});
+    } catch (falha) {
+      setErro(mensagemErro(falha));
+      setChamados([]);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      let ativo = true;
-      const carregar = async (): Promise<void> => {
-        setCarregando(true);
-        setErro('');
-        try {
-          const resultado = await Promise.all([
-            listarChamados(0, 20),
-            obterMetricas().catch(() => null),
-            lerPerfil().catch(() => null),
-          ]);
-          if (ativo === false) {
-            return;
-          }
-          const pagina = resultado[0];
-          const metricas = resultado[1] as MetricasChamados | null;
-          const perfilSalvo = resultado[2] as PerfilResposta | null;
-          const conteudo = pagina && pagina.content ? pagina.content : [];
-          setChamados(conteudo);
-          setPerfil(perfilSalvo);
-          if (metricas !== null && metricas !== undefined) {
-            setAbertos(typeof metricas.abertos === 'number' ? metricas.abertos : 0);
-            setFechados(typeof metricas.fechados === 'number' ? metricas.fechados : 0);
-          }
-          if (conteudo.length === 0) {
-            setErro('Nenhum chamado encontrado.');
-          }
-        } catch (falha) {
-          if (ativo === false) {
-            return;
-          }
-          if (axios.isAxiosError(falha)) {
-            const status = falha.response ? falha.response.status : 0;
-            const dados = falha.response
-              ? (falha.response.data as { mensagem?: string; message?: string })
-              : undefined;
-            const mensagemApi =
-              dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-            if (mensagemApi !== '') {
-              setErro(mensagemApi);
-            } else if (status === 401) {
-              setErro('Sessao expirada. Entre novamente.');
-            } else {
-              setErro('Falha ao listar chamados. Tente novamente.');
-            }
-          } else if (falha instanceof Error) {
-            setErro(falha.message);
-          } else {
-            setErro('Falha ao listar chamados. Tente novamente.');
-          }
-        } finally {
-          if (ativo === true) {
-            setCarregando(false);
-          }
-        }
-      };
-      carregar();
-      return () => {
-        ativo = false;
-      };
-    }, [])
+      void carregar();
+    }, [carregar])
   );
 
   const irParaDetalhe = (id: number): void => {
@@ -87,27 +79,27 @@ export default function PainelScreen() {
   };
 
   const irParaNovoChamado = (): void => {
-    router.push({ pathname: '/novo-chamado' } as never);
-  };
-
-  const irParaUsuarios = (): void => {
-    router.push({ pathname: '/admin/usuarios' } as never);
-  };
-
-  const irParaEquipamentos = (): void => {
-    router.push({ pathname: '/admin/equipamentos' } as never);
-  };
-
-  const irParaSetores = (): void => {
-    router.push({ pathname: '/admin/setores' } as never);
-  };
-
-  const irParaPrioridades = (): void => {
-    router.push({ pathname: '/admin/prioridades' } as never);
+    router.push('/novo-chamado');
   };
 
   const irParaChamados = (): void => {
-    router.push('/chamados' as never);
+    router.push('/chamados');
+  };
+
+  const irParaUsuarios = (): void => {
+    router.push('/admin/usuarios');
+  };
+
+  const irParaEquipamentos = (): void => {
+    router.push('/admin/equipamentos');
+  };
+
+  const irParaSetores = (): void => {
+    router.push('/admin/setores');
+  };
+
+  const irParaPrioridades = (): void => {
+    router.push('/admin/prioridades');
   };
 
   const sair = async (): Promise<void> => {
@@ -116,182 +108,216 @@ export default function PainelScreen() {
     router.replace('/');
   };
 
-  const equipamentoDe = (item: ChamadoResposta): string => {
-    if (item.titulo !== null && item.titulo !== undefined && item.titulo !== '') {
-      return item.titulo;
-    }
-    if (item.idEquipamento !== null && item.idEquipamento !== undefined) {
-      return String(item.idEquipamento);
-    }
-    return String(item.id);
+  const confirmarSair = (): void => {
+    Alert.alert('Sair', 'Deseja encerrar a sessão?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: () => void sair() },
+    ]);
   };
 
-  return (
-    <View style={estilos.tela}>
-      <ScrollView contentContainerStyle={estilos.container}>
-      <Cabecalho titulo="Painel Tecnico" subtitulo="Chamados abertos" />
+  const rotuloEquipamento = (item: ChamadoResposta): string | null => {
+    if (item.idEquipamento === null || item.idEquipamento === undefined) {
+      return null;
+    }
+    return '#' + String(item.idEquipamento);
+  };
+
+  const entradasPrioridade = Object.entries(porPrioridade);
+  const nomeUsuario = perfil !== null && perfil.nome !== '' ? perfil.nome : 'usuário';
+  const ehEquipe = perfil !== null && (perfil.perfil === 'ADMIN' || perfil.perfil === 'TECNICO');
+
+  const cabecalhoLista = (
+    <View style={estilos.cabecalhoLista}>
+      <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
+      <View style={estilos.saudacao}>
+        <Text style={estilos.ola}>{'Olá, ' + nomeUsuario + '!'}</Text>
+        {perfil !== null ? <BadgeStatus tipo="perfil" valor={perfil.perfil} /> : null}
+      </View>
       <View style={estilos.metricas}>
         <View style={estilos.cartaoMetrica}>
+          <Ionicons name="alert-circle-outline" size={20} color={CORES.primario} />
           <Text style={estilos.numeroMetrica}>{String(abertos)}</Text>
-          <Text style={estilos.rotuloMetrica}>Chamados Abertos</Text>
+          <Text style={estilos.rotuloMetrica}>Chamados abertos</Text>
         </View>
         <View style={estilos.cartaoMetrica}>
+          <Ionicons name="checkmark-circle-outline" size={20} color={CORES.sucesso} />
           <Text style={estilos.numeroMetrica}>{String(fechados)}</Text>
-          <Text style={estilos.rotuloMetrica}>Chamados Fechados</Text>
+          <Text style={estilos.rotuloMetrica}>Chamados fechados</Text>
         </View>
       </View>
-      <View style={estilos.navegacao}>
-        <BotaoPadrao
-          titulo="VER TODOS OS CHAMADOS"
-          aoPressionar={irParaChamados}
-          desabilitado={carregando}
-        />
-      </View>
-      {perfil !== null && (perfil.perfil === 'ADMIN' || perfil.perfil === 'TECNICO') ? (
-        <View style={estilos.admin}>
-          <Text style={estilos.tituloAdmin}>Administracao</Text>
-          {perfil.perfil === 'ADMIN' ? (
-            <BotaoPadrao
-              titulo="Gerenciar Usuarios"
-              aoPressionar={irParaUsuarios}
-              desabilitado={carregando}
-            />
-          ) : null}
-          <BotaoPadrao
-            titulo="Gerenciar Equipamentos"
-            aoPressionar={irParaEquipamentos}
-            desabilitado={carregando}
-          />
-          <BotaoPadrao
-            titulo="Gerenciar Setores"
-            aoPressionar={irParaSetores}
-            desabilitado={carregando}
-          />
-          <BotaoPadrao
-            titulo="Gerenciar Prioridades"
-            aoPressionar={irParaPrioridades}
-            desabilitado={carregando}
-          />
+      {entradasPrioridade.length > 0 ? (
+        <View style={estilos.bloco}>
+          <Text style={estilos.tituloSecao}>Por prioridade</Text>
+          <View style={estilos.listaPrioridades}>
+            {entradasPrioridade.map(([chave, total]: [string, number]) => (
+              <View key={chave} style={estilos.cartaoPrioridade}>
+                <BadgeStatus tipo="prioridade" valor={chave} rotulo={chave === '' ? 'Sem prioridade' : chave} />
+                <Text style={estilos.totalPrioridade}>{String(total)}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
-      <View style={estilos.lista}>
-        {carregando === true ? (
-          <Text style={estilos.carregando}>Carregando chamados...</Text>
-        ) : erro !== '' && chamados.length === 0 ? (
-          <Text style={estilos.erro}>{erro}</Text>
-        ) : (
-          chamados.map((item: ChamadoResposta) => (
-            <CardChamado
-              key={String(item.id)}
-              equipamento={equipamentoDe(item)}
-              descricao={item.descricao}
-              status={item.status}
-              prioridade={item.prioridade}
-              dataAbertura={item.dataAbertura}
-              corPrioridade={item.corPrioridade}
-              aoPressionar={() => irParaDetalhe(item.id)}
-            />
-          ))
-        )}
+      <View style={estilos.bloco}>
+        <Text style={estilos.tituloSecao}>Atalhos</Text>
+        <BotaoPadrao titulo="Novo chamado" aoPressionar={irParaNovoChamado} icone="add-circle-outline" />
+        <BotaoPadrao
+          titulo="Ver todos os chamados"
+          aoPressionar={irParaChamados}
+          icone="list-outline"
+          variante="secundario"
+        />
       </View>
-      {erro !== '' && chamados.length > 0 ? <Text style={estilos.erro}>{erro}</Text> : null}
-      <View style={estilos.rodape}>
-        <BotaoPadrao titulo="Novo Chamado" aoPressionar={irParaNovoChamado} desabilitado={carregando} />
-        <BotaoPadrao titulo="Sair" aoPressionar={sair} desabilitado={carregando} />
-      </View>
-      </ScrollView>
+      {ehEquipe === true ? (
+        <View style={estilos.admin}>
+          <Text style={estilos.tituloSecao}>Administração</Text>
+          {perfil !== null && perfil.perfil === 'ADMIN' ? (
+            <BotaoPadrao titulo="Gerenciar usuários" aoPressionar={irParaUsuarios} icone="people-outline" variante="fantasma" />
+          ) : null}
+          <BotaoPadrao titulo="Gerenciar equipamentos" aoPressionar={irParaEquipamentos} icone="hardware-chip-outline" variante="fantasma" />
+          <BotaoPadrao titulo="Gerenciar setores" aoPressionar={irParaSetores} icone="grid-outline" variante="fantasma" />
+          <BotaoPadrao titulo="Gerenciar prioridades" aoPressionar={irParaPrioridades} icone="flag-outline" variante="fantasma" />
+        </View>
+      ) : null}
+      <BotaoPadrao titulo="Sair" aoPressionar={confirmarSair} icone="log-out-outline" variante="perigo" />
+      <Text style={estilos.tituloSecao}>Chamados recentes</Text>
     </View>
+  );
+
+  return (
+    <FlatList
+      style={estilos.tela}
+      contentContainerStyle={estilos.container}
+      data={chamados}
+      keyExtractor={(item: ChamadoResposta) => String(item.id)}
+      renderItem={({ item }: { item: ChamadoResposta }) => (
+        <CardChamado
+          titulo={item.titulo}
+          equipamento={rotuloEquipamento(item)}
+          descricao={item.descricao}
+          status={item.status}
+          prioridade={item.prioridade}
+          corPrioridade={item.corPrioridade}
+          dataAbertura={item.dataAbertura}
+          aoPressionar={() => irParaDetalhe(item.id)}
+        />
+      )}
+      ItemSeparatorComponent={() => <View style={estilos.separador} />}
+      ListHeaderComponent={cabecalhoLista}
+      ListEmptyComponent={
+        carregando === true ? (
+          <EstadoCarregando mensagem="Carregando chamados..." />
+        ) : erro !== '' ? (
+          <EstadoErro mensagem={erro} aoTentarNovamente={() => void carregar()} />
+        ) : (
+          <EstadoVazio
+            titulo="Nenhum chamado encontrado"
+            subtitulo="Abra um novo chamado para começar o atendimento."
+          />
+        )
+      }
+      refreshControl={
+        <RefreshControl
+          refreshing={carregando}
+          onRefresh={() => void carregar()}
+          tintColor={CORES.primario}
+          colors={[CORES.primario]}
+        />
+      }
+    />
   );
 }
 
 const estilos = StyleSheet.create({
   tela: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: CORES.fundo,
   },
   container: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#0F172A',
+    padding: ESPACAMENTO.xl,
+    paddingBottom: ESPACAMENTO.xxl,
+    backgroundColor: CORES.fundo,
+  },
+  cabecalhoLista: {
+    gap: ESPACAMENTO.md,
+    marginBottom: ESPACAMENTO.lg,
+  },
+  saudacao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: ESPACAMENTO.md,
+  },
+  ola: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: CORES.texto,
   },
   metricas: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    gap: 12,
-    marginTop: 16,
-    marginBottom: 12,
+    gap: ESPACAMENTO.md,
   },
   cartaoMetrica: {
     flex: 1,
-    flexDirection: 'column',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: ESPACAMENTO.xs,
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
   },
   numeroMetrica: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#F8FAFC',
-    textAlign: 'center',
+    color: CORES.texto,
   },
   rotuloMetrica: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: CORES.textoSecundario,
     textAlign: 'center',
-    marginTop: 4,
   },
-  lista: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    gap: 12,
+  bloco: {
+    gap: ESPACAMENTO.sm,
+  },
+  tituloSecao: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: CORES.texto,
+    marginTop: ESPACAMENTO.sm,
+  },
+  listaPrioridades: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: ESPACAMENTO.sm,
+  },
+  cartaoPrioridade: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ESPACAMENTO.sm,
+    paddingHorizontal: ESPACAMENTO.md,
+    paddingVertical: ESPACAMENTO.sm,
+    borderRadius: RAIO.medio,
+    borderWidth: 1,
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
+  },
+  totalPrioridade: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: CORES.texto,
   },
   admin: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    gap: ESPACAMENTO.sm,
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
-    marginBottom: 12,
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
   },
-  tituloAdmin: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
-    textAlign: 'left',
-  },
-  navegacao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    marginBottom: 12,
-  },
-  carregando: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
-  erro: {
-    fontSize: 14,
-    color: '#F87171',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  rodape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    marginTop: 24,
+  separador: {
+    height: ESPACAMENTO.md,
   },
 });

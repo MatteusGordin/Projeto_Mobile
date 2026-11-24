@@ -90,3 +90,14 @@ export interface Prioridade {
   ativa: boolean | null;
   slaHoras: number | null;
 }
+
+export interface FiltrosChamados {
+  page: number;
+  size: number;
+  status?: string | null;
+  prioridade?: string | null;
+  idSetor?: string | null;
+  sort?: string | null;
+}
+
+export type MetricasPrioridades = Record<string, number>;

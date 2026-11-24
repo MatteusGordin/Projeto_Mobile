@@ -5,15 +5,35 @@ import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
 import BotaoPadrao from '../componentes/BotaoPadrao';
+import EstadoCarregando from '../componentes/EstadoCarregando';
 import api from '../api/client';
 import { apagarPerfil, apagarToken, lerToken, salvarPerfil, salvarToken } from '../auth/session';
+import { CORES, ESPACAMENTO } from '../tema/cores';
 import type { CredenciaisLogin, LoginResposta, PerfilResposta } from '../types/models';
+
+function mensagemErro(falha: unknown): string {
+  if (axios.isAxiosError(falha)) {
+    const dados = falha.response ? (falha.response.data as { mensagem?: string }) : undefined;
+    if (dados !== undefined && typeof dados.mensagem === 'string' && dados.mensagem !== '') {
+      return dados.mensagem;
+    }
+    const status = falha.response ? falha.response.status : 0;
+    if (status === 401) {
+      return 'E-mail ou senha inválidos.';
+    }
+    if (status === 400) {
+      return 'Requisição inválida. Verifique os dados.';
+    }
+  }
+  return 'Falha na autenticação. Tente novamente.';
+}
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState<string>('');
   const [senha, setSenha] = useState<string>('');
   const [erro, setErro] = useState<string>('');
+  const [tentativa, setTentativa] = useState<boolean>(false);
   const [carregando, setCarregando] = useState<boolean>(false);
   const [verificando, setVerificando] = useState<boolean>(true);
 
@@ -44,7 +64,7 @@ export default function LoginScreen() {
         }
       }
     };
-    validarSessao();
+    void validarSessao();
     return () => {
       montado = false;
     };
@@ -54,10 +74,11 @@ export default function LoginScreen() {
     if (carregando === true) {
       return;
     }
+    setTentativa(true);
     const emailNormalizado = email.trim();
     const senhaNormalizada = senha.trim();
     if (emailNormalizado === '' || senhaNormalizada === '') {
-      setErro('Informe email e senha.');
+      setErro('Informe e-mail e senha.');
       return;
     }
     setErro('');
@@ -70,7 +91,7 @@ export default function LoginScreen() {
       const respostaLogin = await api.post<LoginResposta>('/auth/login', credenciais);
       const token = respostaLogin.data && respostaLogin.data.token ? respostaLogin.data.token : '';
       if (token === '') {
-        setErro('Falha na autenticacao. Tente novamente.');
+        setErro('Falha na autenticação. Tente novamente.');
         return;
       }
       await salvarToken(token);
@@ -78,31 +99,14 @@ export default function LoginScreen() {
       await salvarPerfil(respostaPerfil.data);
       router.replace('/painel');
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Email ou senha invalidos.');
-        } else if (status === 400) {
-          setErro('Requisicao invalida. Verifique os dados.');
-        } else {
-          setErro('Falha na autenticacao. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha na autenticacao. Tente novamente.');
-      }
+      setErro(mensagemErro(falha));
     } finally {
       setCarregando(false);
     }
   };
+
+  const erroEmail = tentativa === true && email.trim() === '' ? 'Informe o e-mail.' : undefined;
+  const erroSenha = tentativa === true && senha.trim() === '' ? 'Informe a senha.' : undefined;
 
   return (
     <KeyboardAvoidingView
@@ -113,27 +117,29 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
         <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
         {verificando === true ? (
-          <Text style={estilos.verificando}>Verificando sessao...</Text>
+          <EstadoCarregando mensagem="Verificando sessão..." />
         ) : (
           <View style={estilos.formulario}>
             <InputPadrao
-              rotulo="Email"
+              rotulo="E-mail"
               valor={email}
               aoMudar={setEmail}
               placeholder="voce@exemplo.com"
+              erro={erroEmail}
             />
             <InputPadrao
               rotulo="Senha"
               valor={senha}
               aoMudar={setSenha}
               placeholder="Digite a senha"
-              seguro={true}
+              alternarSenha={true}
+              erro={erroSenha}
             />
             {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
             <BotaoPadrao
               titulo={carregando === true ? 'Entrando...' : 'Entrar'}
-              aoPressionar={entrar}
-              desabilitado={carregando}
+              aoPressionar={() => void entrar()}
+              carregando={carregando}
             />
           </View>
         )}
@@ -145,32 +151,22 @@ export default function LoginScreen() {
 const estilos = StyleSheet.create({
   tela: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: CORES.fundo,
   },
   container: {
     flexGrow: 1,
-    flexDirection: 'column',
     justifyContent: 'center',
-    alignItems: 'stretch',
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#0F172A',
+    padding: ESPACAMENTO.xl,
+    paddingBottom: ESPACAMENTO.xxl + ESPACAMENTO.lg,
+    backgroundColor: CORES.fundo,
   },
   formulario: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    gap: ESPACAMENTO.sm,
   },
   erro: {
     fontSize: 14,
-    color: '#F87171',
+    color: CORES.perigo,
     textAlign: 'center',
-    marginTop: 12,
-  },
-  verificando: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginTop: 12,
+    marginTop: ESPACAMENTO.md,
   },
 });

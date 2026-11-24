@@ -8,6 +8,11 @@ export async function listarPrioridades(page: number, size: number): Promise<Pag
   return resposta.data;
 }
 
+export async function listarOpcoesPrioridades(): Promise<Prioridade[]> {
+  const resposta = await api.get<Prioridade[]>('/prioridades' + '/' + 'opcoes');
+  return resposta.data;
+}
+
 export async function buscarPrioridadePorId(id: number): Promise<Prioridade> {
   const resposta = await api.get<Prioridade>('/prioridades' + '/' + String(id));
   return resposta.data;

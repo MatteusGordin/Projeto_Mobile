@@ -1,7 +1,12 @@
-import { Button, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import BadgeStatus from './BadgeStatus';
+import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
+import { formatarDataIso } from '../utils/formatacao';
 
 interface CardChamadoProps {
-  equipamento: string;
+  titulo: string;
+  equipamento?: string | null;
   descricao: string;
   status: string;
   prioridade?: string | null;
@@ -11,6 +16,7 @@ interface CardChamadoProps {
 }
 
 export default function CardChamado({
+  titulo,
   equipamento,
   descricao,
   status,
@@ -19,92 +25,77 @@ export default function CardChamado({
   corPrioridade,
   aoPressionar,
 }: CardChamadoProps) {
-  const pressionar = (): void => {
-    if (aoPressionar !== undefined) {
-      aoPressionar();
-    }
-  };
-  const temPrioridade = prioridade !== undefined && prioridade !== null && prioridade !== '';
+  const temEquipamento = equipamento !== undefined && equipamento !== null && equipamento !== '';
   const temAbertura = dataAbertura !== undefined && dataAbertura !== null && dataAbertura !== '';
-  const temCor =
-    corPrioridade !== undefined && corPrioridade !== null && corPrioridade !== '';
-  const corSelo = temCor && corPrioridade !== undefined && corPrioridade !== null ? corPrioridade : '#475569';
   return (
-    <View style={estilos.cartao}>
-      <Text style={estilos.equipamento}>{equipamento}</Text>
-      <Text style={estilos.descricao}>{descricao}</Text>
-      <Text style={estilos.status}>{status}</Text>
-      {temPrioridade || temAbertura ? (
-        <View style={estilos.meta}>
-          {temPrioridade ? (
-            <View style={estilos.linhaMeta}>
-              <View style={[estilos.selo, { backgroundColor: corSelo }]} />
-              <Text style={estilos.metaTexto}>{prioridade}</Text>
-            </View>
-          ) : null}
-          {temAbertura ? <Text style={estilos.metaTexto}>{dataAbertura}</Text> : null}
-        </View>
-      ) : null}
-      <View style={estilos.acao}>
-        <Button title="Ver Detalhes" onPress={pressionar} />
+    <TouchableOpacity
+      style={estilos.cartao}
+      onPress={aoPressionar}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={'Chamado ' + titulo + ', status ' + status}
+    >
+      <View style={estilos.linhaTitulo}>
+        <Text style={estilos.titulo} numberOfLines={2}>
+          {titulo}
+        </Text>
+        <Ionicons name="chevron-forward-outline" size={20} color={CORES.textoSecundario} />
       </View>
-    </View>
+      {temEquipamento ? <Text style={estilos.equipamento}>{'Equipamento: ' + equipamento}</Text> : null}
+      <Text style={estilos.descricao} numberOfLines={3}>
+        {descricao}
+      </Text>
+      <View style={estilos.selos}>
+        <BadgeStatus valor={status} />
+        <BadgeStatus tipo="prioridade" valor={prioridade} cor={corPrioridade} />
+      </View>
+      {temAbertura ? (
+        <Text style={estilos.data}>{'Abertura: ' + formatarDataIso(dataAbertura)}</Text>
+      ) : null}
+    </TouchableOpacity>
   );
 }
 
 const estilos = StyleSheet.create({
   cartao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    padding: ESPACAMENTO.lg,
+    backgroundColor: CORES.superficie,
   },
-  equipamento: {
+  linhaTitulo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: ESPACAMENTO.sm,
+  },
+  titulo: {
+    flex: 1,
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#F8FAFC',
+    color: CORES.texto,
+  },
+  equipamento: {
+    fontSize: 12,
+    color: CORES.textoSecundario,
+    marginTop: ESPACAMENTO.xs,
   },
   descricao: {
     fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 4,
+    color: CORES.textoSecundario,
+    marginTop: ESPACAMENTO.sm,
   },
-  status: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#93C5FD',
-    marginTop: 8,
-  },
-  meta: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    marginTop: 8,
-    gap: 4,
-  },
-  linhaMeta: {
+  selos: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
     alignItems: 'center',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: ESPACAMENTO.sm,
+    marginTop: ESPACAMENTO.md,
   },
-  selo: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  metaTexto: {
+  data: {
     fontSize: 12,
-    color: '#94A3B8',
-  },
-  acao: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    marginTop: 12,
+    color: CORES.textoSecundario,
+    marginTop: ESPACAMENTO.sm,
   },
 });

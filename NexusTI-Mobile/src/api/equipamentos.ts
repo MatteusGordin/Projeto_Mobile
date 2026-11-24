@@ -8,6 +8,11 @@ export async function listarEquipamentos(page: number, size: number): Promise<Pa
   return resposta.data;
 }
 
+export async function listarOpcoesEquipamentos(): Promise<Equipamento[]> {
+  const resposta = await api.get<Equipamento[]>('/equipamentos' + '/' + 'opcoes');
+  return resposta.data;
+}
+
 export async function buscarEquipamentoPorId(id: number): Promise<Equipamento> {
   const resposta = await api.get<Equipamento>('/equipamentos' + '/' + String(id));
   return resposta.data;
