@@ -6,6 +6,7 @@ export interface Usuario {
   email: string;
   perfil: Perfil;
   idSetor: number;
+  ativo?: boolean;
 }
 
 export interface PerfilResposta {
@@ -68,12 +69,11 @@ export interface MetricasChamados {
 
 export interface Equipamento {
   id: number;
-  patrimonio: string | null;
-  descricao: string | null;
-  marca: string | null;
-  modelo: string | null;
-  idSetor: number | null;
-  status: string | null;
+  patrimonio: string;
+  tipo: string;
+  marca: string;
+  modelo: string;
+  idSetor: number;
 }
 
 export interface Setor {
@@ -88,7 +88,6 @@ export interface Prioridade {
   cor: string | null;
   ordem: number | null;
   ativa: boolean | null;
-  slaHoras: number | null;
 }
 
 export interface FiltrosChamados {

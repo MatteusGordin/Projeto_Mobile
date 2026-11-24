@@ -8,6 +8,17 @@ const ROTA_BASE = '/api';
 const FALLBACK = PROTOCOLO + BARRA + BARRA + HOSPEDEIRO + ROTA_BASE;
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? FALLBACK;
 
+let aoExpirarSessao: (() => void) | null = null;
+
+export function registrarSessaoExpirada(callback: () => void): () => void {
+  aoExpirarSessao = callback;
+  return () => {
+    if (aoExpirarSessao === callback) {
+      aoExpirarSessao = null;
+    }
+  };
+}
+
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
@@ -33,6 +44,9 @@ api.interceptors.response.use(
     if (status === 401 && rotaPublica === false) {
       await apagarToken();
       await apagarPerfil();
+      if (aoExpirarSessao !== null) {
+        aoExpirarSessao();
+      }
     }
     return Promise.reject(falha);
   }

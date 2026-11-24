@@ -1,353 +1,237 @@
 import { useCallback, useState } from 'react';
-import { Alert, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import axios from 'axios';
 import Cabecalho from '../../componentes/Cabecalho';
 import InputPadrao from '../../componentes/InputPadrao';
 import BotaoPadrao from '../../componentes/BotaoPadrao';
+import EstadoCarregando from '../../componentes/EstadoCarregando';
+import EstadoErro from '../../componentes/EstadoErro';
+import EstadoVazio from '../../componentes/EstadoVazio';
 import { atualizarSetor, criarSetor, deletarSetor, listarSetores } from '../../api/setores';
+import { mensagemErroApi } from '../../utils/errosApi';
+import { CORES, ESPACAMENTO, RAIO } from '../../tema/cores';
 import type { Setor } from '../../types/models';
 
 export default function AdminSetoresScreen() {
   const router = useRouter();
   const [setores, setSetores] = useState<Setor[]>([]);
+  const [busca, setBusca] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(true);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [erro, setErro] = useState<string>('');
   const [confirmacao, setConfirmacao] = useState<string>('');
+  const [modalAberto, setModalAberto] = useState<boolean>(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nome, setNome] = useState<string>('');
   const [sigla, setSigla] = useState<string>('');
+  const [tentativa, setTentativa] = useState<boolean>(false);
 
-  const carregarDados = async (): Promise<void> => {
+  const carregarDados = useCallback(async (): Promise<void> => {
     setCarregando(true);
-    setErro('');
     try {
-      const pagina = await listarSetores(0, 20);
-      const conteudo = pagina && pagina.content ? pagina.content : [];
-      setSetores(conteudo);
-      if (conteudo.length === 0) {
-        setErro('Nenhum setor encontrado.');
-      }
+      const pagina = await listarSetores(0, 200);
+      setSetores(pagina && Array.isArray(pagina.content) ? pagina.content : []);
+      setErro('');
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else {
-          setErro('Falha ao listar setores. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha ao listar setores. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     } finally {
       setCarregando(false);
     }
-  };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let ativo = true;
-      const executar = async (): Promise<void> => {
-        if (ativo === true) {
-          await carregarDados();
-        }
-      };
-      executar();
-      return () => {
-        ativo = false;
-      };
-    }, [])
+      void carregarDados();
+    }, [carregarDados])
   );
 
-  const voltar = (): void => {
-    router.back();
-  };
+  const termo = busca.trim().toLowerCase();
+  const filtrados = setores.filter((item: Setor) => {
+    if (termo === '') {
+      return true;
+    }
+    return (String(item.nome ?? '') + ' ' + String(item.sigla ?? '')).toLowerCase().includes(termo);
+  });
 
-  const limparFormulario = (): void => {
+  const abrirNovo = (): void => {
+    setEditandoId(null);
     setNome('');
     setSigla('');
-    setEditandoId(null);
-  };
-
-  const textoDe = (valor: string | null): string => {
-    if (valor !== null && valor !== undefined && valor !== '') {
-      return valor;
-    }
-    return 'Nao informado';
+    setTentativa(false);
+    setErro('');
+    setModalAberto(true);
   };
 
   const iniciarEdicao = (item: Setor): void => {
     setEditandoId(item.id);
-    setNome(item.nome !== null && item.nome !== undefined ? item.nome : '');
-    setSigla(item.sigla !== null && item.sigla !== undefined ? item.sigla : '');
+    setNome(item.nome ?? '');
+    setSigla(item.sigla ?? '');
+    setTentativa(false);
     setErro('');
-    setConfirmacao('');
+    setModalAberto(true);
   };
 
-  const montarPayload = (): Partial<Setor> | null => {
-    const nomeNormalizado = nome.trim();
-    const siglaNormalizada = sigla.trim();
-    if (nomeNormalizado.length < 3) {
-      setErro('Nome do setor invalido.');
-      return null;
-    }
-    if (siglaNormalizada === '') {
-      setErro('Sigla do setor invalida.');
-      return null;
-    }
-    const payload: Partial<Setor> = {
-      nome: nomeNormalizado,
-      sigla: siglaNormalizada,
-    };
-    return payload;
+  const fecharModal = (): void => {
+    setModalAberto(false);
   };
+
+  const erroNome = tentativa === true && nome.trim().length < 2 ? 'Informe um nome com pelo menos 2 caracteres.' : undefined;
+  const errosigla = tentativa === true && sigla.trim().length < 2 ? 'Informe uma sigla com pelo menos 2 caracteres.' : undefined;
 
   const submeter = async (): Promise<void> => {
     if (salvando === true) {
       return;
     }
-    const payload = montarPayload();
-    if (payload === null) {
+    setTentativa(true);
+    if (nome.trim().length < 2 || sigla.trim().length < 2) {
       return;
     }
-    setErro('');
-    setConfirmacao('');
+    const dados: Partial<Setor> = {
+      nome: nome.trim(),
+      sigla: sigla.trim(),
+    };
     setSalvando(true);
+    setErro('');
     try {
       if (editandoId === null) {
-        const criado = await criarSetor(payload);
-        setConfirmacao('Setor ' + String(criado.id) + ' criado com sucesso.');
+        await criarSetor(dados);
+        setConfirmacao('Setor criado com sucesso.');
       } else {
-        const atualizado = await atualizarSetor(editandoId, payload);
-        setConfirmacao('Setor ' + String(atualizado.id) + ' atualizado com sucesso.');
+        await atualizarSetor(editandoId, dados);
+        setConfirmacao('Setor atualizado com sucesso.');
       }
-      limparFormulario();
+      fecharModal();
       await carregarDados();
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else if (status === 400) {
-          setErro('Requisicao invalida. Verifique os dados.');
-        } else if (editandoId === null) {
-          setErro('Falha ao criar setor. Tente novamente.');
-        } else {
-          setErro('Falha ao atualizar setor. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else if (editandoId === null) {
-        setErro('Falha ao criar setor. Tente novamente.');
-      } else {
-        setErro('Falha ao atualizar setor. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     } finally {
       setSalvando(false);
     }
   };
 
-  const confirmarExclusao = (id: number): void => {
-    Alert.alert('Excluir', 'Confirmar exclusao do setor?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: () => {
-          excluir(id);
-        },
-      },
-    ]);
-  };
-
   const excluir = async (id: number): Promise<void> => {
     setErro('');
-    setConfirmacao('');
     try {
       await deletarSetor(id);
-      if (editandoId === id) {
-        limparFormulario();
-      }
-      setConfirmacao('Setor ' + String(id) + ' excluido com sucesso.');
+      setConfirmacao('Setor excluído com sucesso.');
       await carregarDados();
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else {
-          setErro('Falha ao excluir setor. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha ao excluir setor. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     }
   };
 
-  return (
-    <View style={estilos.tela}>
-      <ScrollView contentContainerStyle={estilos.container}>
-        <Cabecalho titulo="Setores" subtitulo="Administracao" />
-        <View style={estilos.formulario}>
-          <Text style={estilos.tituloForm}>{editandoId === null ? 'Novo Setor' : 'Editar Setor'}</Text>
-          <InputPadrao rotulo="Nome" valor={nome} aoMudar={setNome} placeholder="Exemplo: Financeiro" />
-          <InputPadrao rotulo="Sigla" valor={sigla} aoMudar={setSigla} placeholder="Exemplo: FIN" />
-          <BotaoPadrao
-            titulo={salvando === true ? 'Salvando...' : editandoId === null ? 'Criar' : 'Salvar'}
-            aoPressionar={submeter}
-            desabilitado={salvando}
-          />
-        </View>
-        <View style={estilos.lista}>
-          {carregando === true ? (
-            <Text style={estilos.carregando}>Carregando setores...</Text>
-          ) : erro !== '' && setores.length === 0 ? (
-            <Text style={estilos.erro}>{erro}</Text>
-          ) : (
-            setores.map((item: Setor) => (
-              <View key={String(item.id)} style={estilos.cartao}>
-                <Text style={estilos.nome}>{textoDe(item.nome)}</Text>
-                <Text style={estilos.linha}>{'Sigla: ' + textoDe(item.sigla)}</Text>
-                <View style={estilos.acoes}>
-                  <View style={estilos.botaoAcao}>
-                    <Button title="Editar" color="#3B82F6" onPress={() => iniciarEdicao(item)} />
-                  </View>
-                  <View style={estilos.botaoAcao}>
-                    <Button title="Excluir" color="#EF4444" onPress={() => confirmarExclusao(item.id)} />
-                  </View>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-        {erro !== '' && setores.length > 0 ? <Text style={estilos.erro}>{erro}</Text> : null}
-        {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
-        <View style={estilos.rodape}>
-          <BotaoPadrao titulo="Voltar" aoPressionar={voltar} desabilitado={carregando || salvando} />
-        </View>
-      </ScrollView>
+  const confirmarExclusao = (item: Setor): void => {
+    Alert.alert('Excluir setor', 'Deseja excluir o setor ' + String(item.nome ?? '') + '?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: () => void excluir(item.id) },
+    ]);
+  };
+
+  const voltar = (): void => {
+    router.back();
+  };
+
+  const cabecalhoLista = (
+    <View style={estilos.cabecalhoLista}>
+      <Cabecalho titulo="Setores" subtitulo="Administração" />
+      <BotaoPadrao titulo="+ Novo setor" aoPressionar={abrirNovo} icone="add-outline" />
+      <InputPadrao rotulo="Buscar" valor={busca} aoMudar={setBusca} placeholder="Nome ou sigla" />
+      {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
+      {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
+      <Text style={estilos.tituloSecao}>Cadastrados ({String(filtrados.length)})</Text>
     </View>
+  );
+
+  return (
+    <>
+      <FlatList
+        style={estilos.tela}
+        contentContainerStyle={estilos.container}
+        data={filtrados}
+        keyExtractor={(item: Setor) => String(item.id)}
+        renderItem={({ item }: { item: Setor }) => (
+          <View style={estilos.cartao}>
+            <Text style={estilos.titulo}>{item.nome ?? 'Sem nome'}</Text>
+            <Text style={estilos.linha}>{'Sigla: ' + (item.sigla ?? 'Não informada')}</Text>
+            <View style={estilos.acoes}>
+              <View style={estilos.acao}>
+                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" />
+              </View>
+              <View style={estilos.acao}>
+                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" />
+              </View>
+            </View>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={estilos.separador} />}
+        ListHeaderComponent={cabecalhoLista}
+        ListEmptyComponent={
+          carregando === true ? (
+            <EstadoCarregando mensagem="Carregando setores..." />
+          ) : erro !== '' ? (
+            <EstadoErro mensagem={erro} aoTentarNovamente={() => void carregarDados()} />
+          ) : (
+            <EstadoVazio titulo="Nenhum setor encontrado" subtitulo="Cadastre um setor para começar." />
+          )
+        }
+        ListFooterComponent={<BotaoPadrao titulo="Voltar" aoPressionar={voltar} variante="fantasma" />}
+        refreshControl={<RefreshControl refreshing={carregando} onRefresh={() => void carregarDados()} tintColor={CORES.primario} colors={[CORES.primario]} />}
+      />
+      <Modal visible={modalAberto} transparent animationType="slide" onRequestClose={fecharModal} statusBarTranslucent>
+        <KeyboardAvoidingView style={estilos.modalTela} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={estilos.fundo} onPress={fecharModal}>
+            <Pressable style={estilos.modalCartao} onPress={() => undefined} accessibilityLabel="Formulário de setor">
+              <ScrollView contentContainerStyle={estilos.modalConteudo} keyboardShouldPersistTaps="handled">
+                <Text style={estilos.modalTitulo}>{editandoId === null ? 'Novo setor' : 'Editar setor'}</Text>
+                <InputPadrao rotulo="Nome" valor={nome} aoMudar={setNome} placeholder="Exemplo: Financeiro" erro={erroNome} />
+                <InputPadrao rotulo="Sigla" valor={sigla} aoMudar={setSigla} placeholder="Exemplo: FIN" erro={errosigla} />
+                <BotaoPadrao titulo={salvando === true ? 'Salvando...' : 'Salvar'} aoPressionar={() => void submeter()} carregando={salvando} />
+                <BotaoPadrao titulo="Cancelar" aoPressionar={fecharModal} variante="fantasma" />
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
 const estilos = StyleSheet.create({
-  tela: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  container: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#0F172A',
-  },
-  formulario: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
-    marginBottom: 12,
-  },
-  tituloForm: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
-  },
-  lista: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    gap: 12,
-  },
+  tela: { flex: 1, backgroundColor: CORES.fundo },
+  container: { padding: ESPACAMENTO.xl, paddingBottom: ESPACAMENTO.xxl, backgroundColor: CORES.fundo },
+  cabecalhoLista: { gap: ESPACAMENTO.sm, marginBottom: ESPACAMENTO.lg },
+  tituloSecao: { fontSize: 15, fontWeight: 'bold', color: CORES.texto, marginTop: ESPACAMENTO.sm },
   cartao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
+    gap: ESPACAMENTO.sm,
+    alignItems: 'flex-start',
   },
-  nome: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
-  },
-  linha: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  acoes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-  botaoAcao: {
-    flex: 1,
-  },
-  carregando: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
-  erro: {
-    fontSize: 14,
-    color: '#F87171',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  confirmacao: {
-    fontSize: 14,
-    color: '#4ADE80',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  rodape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    marginTop: 24,
-  },
+  titulo: { fontSize: 16, fontWeight: 'bold', color: CORES.texto },
+  linha: { fontSize: 13, color: CORES.textoSecundario },
+  acoes: { flexDirection: 'row', gap: ESPACAMENTO.sm, alignSelf: 'stretch' },
+  acao: { flex: 1 },
+  separador: { height: ESPACAMENTO.md },
+  erro: { fontSize: 13, color: CORES.perigo, textAlign: 'center' },
+  confirmacao: { fontSize: 13, color: CORES.sucesso, textAlign: 'center' },
+  modalTela: { flex: 1 },
+  fundo: { flex: 1, justifyContent: 'center', padding: ESPACAMENTO.lg, backgroundColor: 'rgba(15, 23, 42, 0.85)' },
+  modalCartao: { maxHeight: '88%', borderRadius: RAIO.grande, borderWidth: 1, borderColor: CORES.borda, backgroundColor: CORES.superficie },
+  modalConteudo: { padding: ESPACAMENTO.xl },
+  modalTitulo: { fontSize: 18, fontWeight: 'bold', color: CORES.texto, marginBottom: ESPACAMENTO.sm },
 });

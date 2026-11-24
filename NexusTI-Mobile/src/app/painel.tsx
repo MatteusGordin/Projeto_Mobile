@@ -1,8 +1,7 @@
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import CardChamado from '../componentes/CardChamado';
 import BotaoPadrao from '../componentes/BotaoPadrao';
@@ -10,24 +9,12 @@ import BadgeStatus from '../componentes/BadgeStatus';
 import EstadoCarregando from '../componentes/EstadoCarregando';
 import EstadoErro from '../componentes/EstadoErro';
 import EstadoVazio from '../componentes/EstadoVazio';
+import ModalPerfil from '../componentes/ModalPerfil';
 import { listarChamados, obterMetricas, obterMetricasPrioridades } from '../api/chamados';
 import { apagarPerfil, apagarToken, lerPerfil } from '../auth/session';
+import { mensagemErroApi } from '../utils/errosApi';
 import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
 import type { ChamadoResposta, MetricasChamados, MetricasPrioridades, PerfilResposta } from '../types/models';
-
-function mensagemErro(falha: unknown): string {
-  if (axios.isAxiosError(falha)) {
-    const dados = falha.response ? (falha.response.data as { mensagem?: string }) : undefined;
-    if (dados !== undefined && typeof dados.mensagem === 'string' && dados.mensagem !== '') {
-      return dados.mensagem;
-    }
-    const status = falha.response ? falha.response.status : 0;
-    if (status === 401) {
-      return 'Sessão expirada. Entre novamente.';
-    }
-  }
-  return 'Falha ao carregar o painel. Tente novamente.';
-}
 
 export default function PainelScreen() {
   const router = useRouter();
@@ -38,6 +25,7 @@ export default function PainelScreen() {
   const [porPrioridade, setPorPrioridade] = useState<MetricasPrioridades>({});
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string>('');
+  const [perfilAberto, setPerfilAberto] = useState<boolean>(false);
 
   const carregar = useCallback(async (): Promise<void> => {
     setCarregando(true);
@@ -61,7 +49,7 @@ export default function PainelScreen() {
       }
       setPorPrioridade(metricasPrioridade !== null && typeof metricasPrioridade === 'object' ? metricasPrioridade : {});
     } catch (falha) {
-      setErro(mensagemErro(falha));
+      setErro(mensagemErroApi(falha));
       setChamados([]);
     } finally {
       setCarregando(false);
@@ -108,13 +96,6 @@ export default function PainelScreen() {
     router.replace('/');
   };
 
-  const confirmarSair = (): void => {
-    Alert.alert('Sair', 'Deseja encerrar a sessão?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => void sair() },
-    ]);
-  };
-
   const rotuloEquipamento = (item: ChamadoResposta): string | null => {
     if (item.idEquipamento === null || item.idEquipamento === undefined) {
       return null;
@@ -132,6 +113,14 @@ export default function PainelScreen() {
       <View style={estilos.saudacao}>
         <Text style={estilos.ola}>{'Olá, ' + nomeUsuario + '!'}</Text>
         {perfil !== null ? <BadgeStatus tipo="perfil" valor={perfil.perfil} /> : null}
+        <Pressable
+          style={estilos.botaoPerfil}
+          onPress={() => setPerfilAberto(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir perfil do usuário"
+        >
+          <Ionicons name="person-circle-outline" size={30} color={CORES.primario} />
+        </Pressable>
       </View>
       <View style={estilos.metricas}>
         <View style={estilos.cartaoMetrica}>
@@ -179,52 +168,59 @@ export default function PainelScreen() {
           <BotaoPadrao titulo="Gerenciar prioridades" aoPressionar={irParaPrioridades} icone="flag-outline" variante="fantasma" />
         </View>
       ) : null}
-      <BotaoPadrao titulo="Sair" aoPressionar={confirmarSair} icone="log-out-outline" variante="perigo" />
       <Text style={estilos.tituloSecao}>Chamados recentes</Text>
     </View>
   );
 
   return (
-    <FlatList
-      style={estilos.tela}
-      contentContainerStyle={estilos.container}
-      data={chamados}
-      keyExtractor={(item: ChamadoResposta) => String(item.id)}
-      renderItem={({ item }: { item: ChamadoResposta }) => (
-        <CardChamado
-          titulo={item.titulo}
-          equipamento={rotuloEquipamento(item)}
-          descricao={item.descricao}
-          status={item.status}
-          prioridade={item.prioridade}
-          corPrioridade={item.corPrioridade}
-          dataAbertura={item.dataAbertura}
-          aoPressionar={() => irParaDetalhe(item.id)}
-        />
-      )}
-      ItemSeparatorComponent={() => <View style={estilos.separador} />}
-      ListHeaderComponent={cabecalhoLista}
-      ListEmptyComponent={
-        carregando === true ? (
-          <EstadoCarregando mensagem="Carregando chamados..." />
-        ) : erro !== '' ? (
-          <EstadoErro mensagem={erro} aoTentarNovamente={() => void carregar()} />
-        ) : (
-          <EstadoVazio
-            titulo="Nenhum chamado encontrado"
-            subtitulo="Abra um novo chamado para começar o atendimento."
+    <>
+      <FlatList
+        style={estilos.tela}
+        contentContainerStyle={estilos.container}
+        data={chamados}
+        keyExtractor={(item: ChamadoResposta) => String(item.id)}
+        renderItem={({ item }: { item: ChamadoResposta }) => (
+          <CardChamado
+            titulo={item.titulo}
+            equipamento={rotuloEquipamento(item)}
+            descricao={item.descricao}
+            status={item.status}
+            prioridade={item.prioridade}
+            corPrioridade={item.corPrioridade}
+            dataAbertura={item.dataAbertura}
+            aoPressionar={() => irParaDetalhe(item.id)}
           />
-        )
-      }
-      refreshControl={
-        <RefreshControl
-          refreshing={carregando}
-          onRefresh={() => void carregar()}
-          tintColor={CORES.primario}
-          colors={[CORES.primario]}
-        />
-      }
-    />
+        )}
+        ItemSeparatorComponent={() => <View style={estilos.separador} />}
+        ListHeaderComponent={cabecalhoLista}
+        ListEmptyComponent={
+          carregando === true ? (
+            <EstadoCarregando mensagem="Carregando chamados..." />
+          ) : erro !== '' ? (
+            <EstadoErro mensagem={erro} aoTentarNovamente={() => void carregar()} />
+          ) : (
+            <EstadoVazio
+              titulo="Nenhum chamado encontrado"
+              subtitulo="Abra um novo chamado para começar o atendimento."
+            />
+          )
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={carregando}
+            onRefresh={() => void carregar()}
+            tintColor={CORES.primario}
+            colors={[CORES.primario]}
+          />
+        }
+      />
+      <ModalPerfil
+        visivel={perfilAberto}
+        perfil={perfil}
+        aoFechar={() => setPerfilAberto(false)}
+        aoSair={() => void sair()}
+      />
+    </>
   );
 }
 
@@ -245,7 +241,6 @@ const estilos = StyleSheet.create({
   saudacao: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: ESPACAMENTO.md,
   },
   ola: {
@@ -253,6 +248,9 @@ const estilos = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: CORES.texto,
+  },
+  botaoPerfil: {
+    padding: ESPACAMENTO.xs,
   },
   metricas: {
     flexDirection: 'row',

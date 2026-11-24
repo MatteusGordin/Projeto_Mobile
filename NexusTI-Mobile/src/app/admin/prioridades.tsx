@@ -1,460 +1,286 @@
 import { useCallback, useState } from 'react';
-import { Alert, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import axios from 'axios';
 import Cabecalho from '../../componentes/Cabecalho';
 import InputPadrao from '../../componentes/InputPadrao';
 import BotaoPadrao from '../../componentes/BotaoPadrao';
 import SelectPadrao from '../../componentes/SelectPadrao';
 import type { OpcaoSelect } from '../../componentes/SelectPadrao';
-import {
-  atualizarPrioridade,
-  criarPrioridade,
-  deletarPrioridade,
-  listarPrioridades,
-} from '../../api/prioridades';
+import BadgeStatus from '../../componentes/BadgeStatus';
+import EstadoCarregando from '../../componentes/EstadoCarregando';
+import EstadoErro from '../../componentes/EstadoErro';
+import EstadoVazio from '../../componentes/EstadoVazio';
+import { atualizarPrioridade, criarPrioridade, deletarPrioridade, listarPrioridades } from '../../api/prioridades';
+import { mensagemErroApi } from '../../utils/errosApi';
+import { validarCorHex } from '../../utils/formatacao';
+import { CORES, ESPACAMENTO, RAIO } from '../../tema/cores';
 import type { Prioridade } from '../../types/models';
 
 const OPCOES_ATIVA: OpcaoSelect[] = [
   { id: 'true', rotulo: 'Sim' },
-  { id: 'false', rotulo: 'Nao' },
+  { id: 'false', rotulo: 'Não' },
+];
+
+const PALETA_CORES: { rotulo: string; valor: string }[] = [
+  { rotulo: 'Vermelho', valor: '#EF4444' },
+  { rotulo: 'Laranja', valor: '#F97316' },
+  { rotulo: 'Amarelo', valor: '#EAB308' },
+  { rotulo: 'Verde', valor: '#22C55E' },
+  { rotulo: 'Azul', valor: '#3B82F6' },
+  { rotulo: 'Cinza', valor: '#64748B' },
 ];
 
 export default function AdminPrioridadesScreen() {
   const router = useRouter();
   const [prioridades, setPrioridades] = useState<Prioridade[]>([]);
+  const [busca, setBusca] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(true);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [erro, setErro] = useState<string>('');
   const [confirmacao, setConfirmacao] = useState<string>('');
+  const [modalAberto, setModalAberto] = useState<boolean>(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [nome, setNome] = useState<string>('');
-  const [cor, setCor] = useState<string>('');
+  const [cor, setCor] = useState<string>('#64748B');
   const [ordemTexto, setOrdemTexto] = useState<string>('');
-  const [ativaTexto, setAtivaTexto] = useState<string>('');
-  const [slaHorasTexto, setSlaHorasTexto] = useState<string>('');
+  const [ativaTexto, setAtivaTexto] = useState<string>('true');
+  const [tentativa, setTentativa] = useState<boolean>(false);
 
-  const carregarDados = async (): Promise<void> => {
+  const carregarDados = useCallback(async (): Promise<void> => {
     setCarregando(true);
-    setErro('');
     try {
-      const pagina = await listarPrioridades(0, 20);
-      const conteudo = pagina && pagina.content ? pagina.content : [];
-      setPrioridades(conteudo);
-      if (conteudo.length === 0) {
-        setErro('Nenhuma prioridade encontrada.');
-      }
+      const pagina = await listarPrioridades(0, 200);
+      setPrioridades(pagina && Array.isArray(pagina.content) ? pagina.content : []);
+      setErro('');
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else {
-          setErro('Falha ao listar prioridades. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha ao listar prioridades. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     } finally {
       setCarregando(false);
     }
-  };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let ativo = true;
-      const executar = async (): Promise<void> => {
-        if (ativo === true) {
-          await carregarDados();
-        }
-      };
-      executar();
-      return () => {
-        ativo = false;
-      };
-    }, [])
+      void carregarDados();
+    }, [carregarDados])
   );
 
-  const voltar = (): void => {
-    router.back();
-  };
-
-  const limparFormulario = (): void => {
-    setNome('');
-    setCor('');
-    setOrdemTexto('');
-    setAtivaTexto('');
-    setSlaHorasTexto('');
-    setEditandoId(null);
-  };
-
-  const textoDe = (valor: string | null): string => {
-    if (valor !== null && valor !== undefined && valor !== '') {
-      return valor;
-    }
-    return 'Nao informado';
-  };
-
-  const numeroDe = (valor: number | null): string => {
-    if (valor !== null && valor !== undefined) {
-      return String(valor);
-    }
-    return 'Nao informado';
-  };
-
-  const ativaDe = (valor: boolean | null): string => {
-    if (valor === true) {
-      return 'Sim';
-    }
-    if (valor === false) {
-      return 'Nao';
-    }
-    return 'Nao informado';
-  };
-
-  const converterNumero = (texto: string, rotulo: string): number | null | undefined => {
-    const normalizado = texto.trim();
-    if (normalizado === '') {
-      return null;
-    }
-    const numerico = Number(normalizado);
-    if (Number.isNaN(numerico) === true || numerico < 0) {
-      setErro(rotulo + ' invalido.');
-      return undefined;
-    }
-    return numerico;
-  };
-
-  const converterAtiva = (texto: string): boolean | null | undefined => {
-    const normalizado = texto.trim().toLowerCase();
-    if (normalizado === '') {
-      return null;
-    }
-    if (normalizado === 'true' || normalizado === 'sim' || normalizado === '1') {
+  const termo = busca.trim().toLowerCase();
+  const filtrados = prioridades.filter((item: Prioridade) => {
+    if (termo === '') {
       return true;
     }
-    if (normalizado === 'false' || normalizado === 'nao' || normalizado === '0') {
-      return false;
-    }
-    setErro('Ativa invalida. Use true ou false.');
-    return undefined;
+    return (String(item.nome ?? '') + ' ' + String(item.cor ?? '')).toLowerCase().includes(termo);
+  });
+
+  const abrirNovo = (): void => {
+    setEditandoId(null);
+    setNome('');
+    setCor('#64748B');
+    setOrdemTexto('');
+    setAtivaTexto('true');
+    setTentativa(false);
+    setErro('');
+    setModalAberto(true);
   };
 
   const iniciarEdicao = (item: Prioridade): void => {
     setEditandoId(item.id);
-    setNome(item.nome !== null && item.nome !== undefined ? item.nome : '');
-    setCor(item.cor !== null && item.cor !== undefined ? item.cor : '');
+    setNome(item.nome ?? '');
+    setCor(validarCorHex(item.cor, '#64748B'));
     setOrdemTexto(item.ordem !== null && item.ordem !== undefined ? String(item.ordem) : '');
-    setAtivaTexto(item.ativa === true ? 'true' : item.ativa === false ? 'false' : '');
-    setSlaHorasTexto(item.slaHoras !== null && item.slaHoras !== undefined ? String(item.slaHoras) : '');
+    setAtivaTexto(item.ativa === false ? 'false' : 'true');
+    setTentativa(false);
     setErro('');
-    setConfirmacao('');
+    setModalAberto(true);
   };
 
-  const montarPayload = (): Partial<Prioridade> | null => {
-    const nomeNormalizado = nome.trim();
-    const corNormalizada = cor.trim();
-    if (nomeNormalizado.length < 3) {
-      setErro('Nome da prioridade invalido.');
-      return null;
-    }
-    if (corNormalizada === '') {
-      setErro('Cor da prioridade invalida.');
-      return null;
-    }
-    const ordem = converterNumero(ordemTexto, 'Ordem da prioridade');
-    if (ordem === undefined) {
-      return null;
-    }
-    const ativa = converterAtiva(ativaTexto);
-    if (ativa === undefined) {
-      return null;
-    }
-    const slaHoras = converterNumero(slaHorasTexto, 'SLA da prioridade');
-    if (slaHoras === undefined) {
-      return null;
-    }
-    const payload: Partial<Prioridade> = {
-      nome: nomeNormalizado,
-      cor: corNormalizada,
-      ordem: ordem,
-      ativa: ativa,
-      slaHoras: slaHoras,
-    };
-    return payload;
+  const fecharModal = (): void => {
+    setModalAberto(false);
   };
+
+  const erroNome = tentativa === true && nome.trim().length < 2 ? 'Informe um nome com pelo menos 2 caracteres.' : undefined;
+  const erroOrdem = tentativa === true && ordemTexto !== '' && Number.isNaN(Number(ordemTexto)) ? 'Informe uma ordem válida.' : undefined;
+  const corSegura = validarCorHex(cor, '#64748B');
 
   const submeter = async (): Promise<void> => {
     if (salvando === true) {
       return;
     }
-    const payload = montarPayload();
-    if (payload === null) {
+    setTentativa(true);
+    if (nome.trim().length < 2 || (ordemTexto !== '' && Number.isNaN(Number(ordemTexto)))) {
       return;
     }
-    setErro('');
-    setConfirmacao('');
+    const dados: Partial<Prioridade> = {
+      nome: nome.trim(),
+      cor: corSegura,
+      ordem: ordemTexto === '' ? null : Number(ordemTexto),
+      ativa: ativaTexto === 'true',
+    };
     setSalvando(true);
+    setErro('');
     try {
       if (editandoId === null) {
-        const criado = await criarPrioridade(payload);
-        setConfirmacao('Prioridade ' + String(criado.id) + ' criada com sucesso.');
+        await criarPrioridade(dados);
+        setConfirmacao('Prioridade criada com sucesso.');
       } else {
-        const atualizado = await atualizarPrioridade(editandoId, payload);
-        setConfirmacao('Prioridade ' + String(atualizado.id) + ' atualizada com sucesso.');
+        await atualizarPrioridade(editandoId, dados);
+        setConfirmacao('Prioridade atualizada com sucesso.');
       }
-      limparFormulario();
+      fecharModal();
       await carregarDados();
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else if (status === 400) {
-          setErro('Requisicao invalida. Verifique os dados.');
-        } else if (editandoId === null) {
-          setErro('Falha ao criar prioridade. Tente novamente.');
-        } else {
-          setErro('Falha ao atualizar prioridade. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else if (editandoId === null) {
-        setErro('Falha ao criar prioridade. Tente novamente.');
-      } else {
-        setErro('Falha ao atualizar prioridade. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     } finally {
       setSalvando(false);
     }
   };
 
-  const confirmarExclusao = (id: number): void => {
-    Alert.alert('Excluir', 'Confirmar exclusao da prioridade?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: () => {
-          excluir(id);
-        },
-      },
-    ]);
-  };
-
   const excluir = async (id: number): Promise<void> => {
     setErro('');
-    setConfirmacao('');
     try {
       await deletarPrioridade(id);
-      if (editandoId === id) {
-        limparFormulario();
-      }
-      setConfirmacao('Prioridade ' + String(id) + ' excluida com sucesso.');
+      setConfirmacao('Prioridade excluída com sucesso.');
       await carregarDados();
     } catch (falha) {
-      if (axios.isAxiosError(falha)) {
-        const status = falha.response ? falha.response.status : 0;
-        const dados = falha.response
-          ? (falha.response.data as { mensagem?: string; message?: string })
-          : undefined;
-        const mensagemApi =
-          dados && dados.mensagem ? dados.mensagem : dados && dados.message ? dados.message : '';
-        if (mensagemApi !== '') {
-          setErro(mensagemApi);
-        } else if (status === 401) {
-          setErro('Sessao expirada. Entre novamente.');
-        } else if (status === 403) {
-          setErro('Acesso negado. Perfil sem permissao.');
-        } else {
-          setErro('Falha ao excluir prioridade. Tente novamente.');
-        }
-      } else if (falha instanceof Error) {
-        setErro(falha.message);
-      } else {
-        setErro('Falha ao excluir prioridade. Tente novamente.');
-      }
+      setErro(mensagemErroApi(falha));
     }
   };
 
-  return (
-    <View style={estilos.tela}>
-      <ScrollView contentContainerStyle={estilos.container}>
-        <Cabecalho titulo="Prioridades" subtitulo="Administracao" />
-        <View style={estilos.formulario}>
-          <Text style={estilos.tituloForm}>
-            {editandoId === null ? 'Nova Prioridade' : 'Editar Prioridade'}
-          </Text>
-          <InputPadrao rotulo="Nome" valor={nome} aoMudar={setNome} placeholder="Exemplo: Alta" />
-          <InputPadrao rotulo="Cor" valor={cor} aoMudar={setCor} placeholder="Exemplo: #EF4444" />
-          <InputPadrao rotulo="Ordem" valor={ordemTexto} aoMudar={setOrdemTexto} placeholder="Exemplo: 1" />
-          <View style={estilos.selectZona}>
-            <SelectPadrao
-              rotulo="Ativa"
-              valorTexto={ativaTexto}
-              placeholder="Selecione"
-              opcoes={OPCOES_ATIVA}
-              aoMudar={setAtivaTexto}
-            />
-          </View>
-          <InputPadrao rotulo="SLA Horas" valor={slaHorasTexto} aoMudar={setSlaHorasTexto} placeholder="Exemplo: 24" />
-          <BotaoPadrao
-            titulo={salvando === true ? 'Salvando...' : editandoId === null ? 'Criar' : 'Salvar'}
-            aoPressionar={submeter}
-            desabilitado={salvando}
-          />
-        </View>
-        <View style={estilos.lista}>
-          {carregando === true ? (
-            <Text style={estilos.carregando}>Carregando prioridades...</Text>
-          ) : erro !== '' && prioridades.length === 0 ? (
-            <Text style={estilos.erro}>{erro}</Text>
-          ) : (
-            prioridades.map((item: Prioridade) => (
-              <View key={String(item.id)} style={estilos.cartao}>
-                <Text style={estilos.nome}>{textoDe(item.nome)}</Text>
-                <Text style={estilos.linha}>{'Cor: ' + textoDe(item.cor)}</Text>
-                <Text style={estilos.linha}>{'Ordem: ' + numeroDe(item.ordem)}</Text>
-                <Text style={estilos.linha}>{'Ativa: ' + ativaDe(item.ativa)}</Text>
-                <View style={estilos.acoes}>
-                  <View style={estilos.botaoAcao}>
-                    <Button title="Editar" color="#3B82F6" onPress={() => iniciarEdicao(item)} />
-                  </View>
-                  <View style={estilos.botaoAcao}>
-                    <Button title="Excluir" color="#EF4444" onPress={() => confirmarExclusao(item.id)} />
-                  </View>
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-        {erro !== '' && prioridades.length > 0 ? <Text style={estilos.erro}>{erro}</Text> : null}
-        {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
-        <View style={estilos.rodape}>
-          <BotaoPadrao titulo="Voltar" aoPressionar={voltar} desabilitado={carregando || salvando} />
-        </View>
-      </ScrollView>
+  const confirmarExclusao = (item: Prioridade): void => {
+    Alert.alert('Excluir prioridade', 'Deseja excluir a prioridade ' + String(item.nome ?? '') + '?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir', style: 'destructive', onPress: () => void excluir(item.id) },
+    ]);
+  };
+
+  const voltar = (): void => {
+    router.back();
+  };
+
+  const cabecalhoLista = (
+    <View style={estilos.cabecalhoLista}>
+      <Cabecalho titulo="Prioridades" subtitulo="Administração" />
+      <BotaoPadrao titulo="+ Nova prioridade" aoPressionar={abrirNovo} icone="add-outline" />
+      <InputPadrao rotulo="Buscar" valor={busca} aoMudar={setBusca} placeholder="Nome ou cor" />
+      {erro !== '' ? <Text style={estilos.erro}>{erro}</Text> : null}
+      {confirmacao !== '' ? <Text style={estilos.confirmacao}>{confirmacao}</Text> : null}
+      <Text style={estilos.tituloSecao}>Cadastradas ({String(filtrados.length)})</Text>
     </View>
+  );
+
+  return (
+    <>
+      <FlatList
+        style={estilos.tela}
+        contentContainerStyle={estilos.container}
+        data={filtrados}
+        keyExtractor={(item: Prioridade) => String(item.id)}
+        renderItem={({ item }: { item: Prioridade }) => (
+          <View style={estilos.cartao}>
+            <BadgeStatus tipo="prioridade" valor={item.nome} cor={item.cor} rotulo={item.nome ?? 'Sem nome'} />
+            <View style={estilos.selos}>
+              <BadgeStatus tipo="prioridade" rotulo={item.ativa === false ? 'Inativa' : 'Ativa'} cor={item.ativa === false ? CORES.textoSecundario : CORES.sucesso} />
+              <Text style={estilos.linha}>{'Ordem: ' + (item.ordem !== null && item.ordem !== undefined ? String(item.ordem) : '0')}</Text>
+            </View>
+            <View style={estilos.acoes}>
+              <View style={estilos.acao}>
+                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" />
+              </View>
+              <View style={estilos.acao}>
+                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" />
+              </View>
+            </View>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={estilos.separador} />}
+        ListHeaderComponent={cabecalhoLista}
+        ListEmptyComponent={
+          carregando === true ? (
+            <EstadoCarregando mensagem="Carregando prioridades..." />
+          ) : erro !== '' ? (
+            <EstadoErro mensagem={erro} aoTentarNovamente={() => void carregarDados()} />
+          ) : (
+            <EstadoVazio titulo="Nenhuma prioridade encontrada" subtitulo="Cadastre uma prioridade para começar." />
+          )
+        }
+        ListFooterComponent={<BotaoPadrao titulo="Voltar" aoPressionar={voltar} variante="fantasma" />}
+        refreshControl={<RefreshControl refreshing={carregando} onRefresh={() => void carregarDados()} tintColor={CORES.primario} colors={[CORES.primario]} />}
+      />
+      <Modal visible={modalAberto} transparent animationType="slide" onRequestClose={fecharModal} statusBarTranslucent>
+        <KeyboardAvoidingView style={estilos.modalTela} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={estilos.fundo} onPress={fecharModal}>
+            <Pressable style={estilos.modalCartao} onPress={() => undefined} accessibilityLabel="Formulário de prioridade">
+              <ScrollView contentContainerStyle={estilos.modalConteudo} keyboardShouldPersistTaps="handled">
+                <Text style={estilos.modalTitulo}>{editandoId === null ? 'Nova prioridade' : 'Editar prioridade'}</Text>
+                <InputPadrao rotulo="Nome" valor={nome} aoMudar={setNome} placeholder="Exemplo: Alta" erro={erroNome} />
+                <Text style={estilos.rotulo}>Cor da prioridade</Text>
+                <View style={estilos.paleta}>
+                  {PALETA_CORES.map((opcao: { rotulo: string; valor: string }) => (
+                    <Pressable
+                      key={opcao.valor}
+                      style={[estilos.cor, { backgroundColor: opcao.valor }, corSegura.toUpperCase() === opcao.valor ? estilos.corSelecionada : null]}
+                      onPress={() => setCor(opcao.valor)}
+                      accessibilityRole="button"
+                      accessibilityLabel={opcao.rotulo}
+                    />
+                  ))}
+                </View>
+                <BadgeStatus tipo="prioridade" valor={nome} cor={corSegura} rotulo="Prévia da cor" />
+                <InputPadrao rotulo="Ordem" valor={ordemTexto} aoMudar={setOrdemTexto} placeholder="Exemplo: 1" erro={erroOrdem} />
+                <SelectPadrao rotulo="Ativa" valorTexto={ativaTexto} placeholder="Selecione" opcoes={OPCOES_ATIVA} aoMudar={setAtivaTexto} mensagemVazia="Nenhuma opção disponível." />
+                <BotaoPadrao titulo={salvando === true ? 'Salvando...' : 'Salvar'} aoPressionar={() => void submeter()} carregando={salvando} />
+                <BotaoPadrao titulo="Cancelar" aoPressionar={fecharModal} variante="fantasma" />
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
 const estilos = StyleSheet.create({
-  tela: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  container: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    padding: 24,
-    paddingBottom: 48,
-    backgroundColor: '#0F172A',
-  },
-  formulario: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
-    marginBottom: 12,
-    position: 'relative',
-    zIndex: 10,
-    elevation: 4,
-  },
-  selectZona: {
-    position: 'relative',
-    zIndex: 10,
-    elevation: 4,
-  },
-  tituloForm: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
-  },
-  lista: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    gap: 12,
-    position: 'relative',
-    zIndex: 0,
-    elevation: 0,
-  },
+  tela: { flex: 1, backgroundColor: CORES.fundo },
+  container: { padding: ESPACAMENTO.xl, paddingBottom: ESPACAMENTO.xxl, backgroundColor: CORES.fundo },
+  cabecalhoLista: { gap: ESPACAMENTO.sm, marginBottom: ESPACAMENTO.lg },
+  tituloSecao: { fontSize: 15, fontWeight: 'bold', color: CORES.texto, marginTop: ESPACAMENTO.sm },
   cartao: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.medio,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
+    gap: ESPACAMENTO.sm,
+    alignItems: 'flex-start',
   },
-  nome: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
-  },
-  linha: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-  acoes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-  botaoAcao: {
-    flex: 1,
-  },
-  carregando: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
-  erro: {
-    fontSize: 14,
-    color: '#F87171',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  confirmacao: {
-    fontSize: 14,
-    color: '#4ADE80',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  rodape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    marginTop: 24,
-  },
+  selos: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: ESPACAMENTO.sm },
+  linha: { fontSize: 13, color: CORES.textoSecundario },
+  acoes: { flexDirection: 'row', gap: ESPACAMENTO.sm, alignSelf: 'stretch' },
+  acao: { flex: 1 },
+  separador: { height: ESPACAMENTO.md },
+  erro: { fontSize: 13, color: CORES.perigo, textAlign: 'center' },
+  erroCampo: { fontSize: 12, color: CORES.perigo },
+  confirmacao: { fontSize: 13, color: CORES.sucesso, textAlign: 'center' },
+  rotulo: { fontSize: 14, fontWeight: 'bold', color: CORES.texto, marginTop: ESPACAMENTO.lg, marginBottom: ESPACAMENTO.sm },
+  paleta: { flexDirection: 'row', flexWrap: 'wrap', gap: ESPACAMENTO.md, marginBottom: ESPACAMENTO.md },
+  cor: { width: 38, height: 38, borderRadius: RAIO.circular, borderWidth: 2, borderColor: 'transparent' },
+  corSelecionada: { borderColor: CORES.texto },
+  modalTela: { flex: 1 },
+  fundo: { flex: 1, justifyContent: 'center', padding: ESPACAMENTO.lg, backgroundColor: 'rgba(15, 23, 42, 0.85)' },
+  modalCartao: { maxHeight: '88%', borderRadius: RAIO.grande, borderWidth: 1, borderColor: CORES.borda, backgroundColor: CORES.superficie },
+  modalConteudo: { padding: ESPACAMENTO.xl },
+  modalTitulo: { fontSize: 18, fontWeight: 'bold', color: CORES.texto, marginBottom: ESPACAMENTO.sm },
 });
