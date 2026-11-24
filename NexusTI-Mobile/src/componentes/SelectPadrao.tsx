@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
 
 export interface OpcaoSelect {
   id: string;
@@ -12,126 +14,177 @@ interface SelectPadraoProps {
   placeholder: string;
   opcoes: OpcaoSelect[];
   aoMudar: (id: string) => void;
+  mensagemVazia?: string;
 }
 
-export default function SelectPadrao({ rotulo, valorTexto, placeholder, opcoes, aoMudar }: SelectPadraoProps) {
+export default function SelectPadrao({
+  rotulo,
+  valorTexto,
+  placeholder,
+  opcoes,
+  aoMudar,
+  mensagemVazia,
+}: SelectPadraoProps) {
   const [aberto, setAberto] = useState<boolean>(false);
   const selecionada = opcoes.find((opcao: OpcaoSelect) => opcao.id === valorTexto) ?? null;
   const textoExibido = selecionada !== null ? selecionada.rotulo : placeholder;
-  const alternar = (): void => {
-    setAberto((atual: boolean) => atual === false);
+  const fechar = (): void => {
+    setAberto(false);
   };
   const escolher = (id: string): void => {
     aoMudar(id);
-    setAberto(false);
+    fechar();
   };
   return (
     <View style={estilos.bloco}>
       <Text style={estilos.rotulo}>{rotulo}</Text>
-      <View style={estilos.contexto}>
-        <TouchableOpacity style={estilos.campo} onPress={alternar} activeOpacity={0.8}>
-          <Text style={selecionada !== null ? estilos.texto : estilos.textoPlaceholder} numberOfLines={1}>
-            {textoExibido}
-          </Text>
-          <Text style={estilos.seta}>{aberto === true ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
-        {aberto === true ? (
-          <View style={estilos.lista}>
-            <ScrollView style={estilos.rolagem} nestedScrollEnabled={true}>
-              {opcoes.length === 0 ? (
-                <Text style={estilos.vazio}>Nenhum equipamento encontrado.</Text>
-              ) : (
-                opcoes.map((opcao: OpcaoSelect) => (
-                  <TouchableOpacity
-                    key={opcao.id}
-                    style={estilos.opcao}
-                    onPress={() => escolher(opcao.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={estilos.textoOpcao}>{opcao.rotulo}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-          </View>
-        ) : null}
-      </View>
+      <Pressable
+        style={estilos.campo}
+        onPress={() => setAberto(true)}
+        accessibilityRole="button"
+        accessibilityLabel={rotulo + ': ' + textoExibido}
+      >
+        <Text style={selecionada !== null ? estilos.texto : estilos.textoPlaceholder} numberOfLines={1}>
+          {textoExibido}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={CORES.textoSecundario} />
+      </Pressable>
+      <Modal visible={aberto} transparent animationType="fade" onRequestClose={fechar} statusBarTranslucent>
+        <Pressable style={estilos.fundo} onPress={fechar}>
+          <Pressable style={estilos.cartao} onPress={() => undefined}>
+            <View style={estilos.cabecalho}>
+              <Text style={estilos.titulo}>{rotulo}</Text>
+              <Pressable
+                style={estilos.botaoFechar}
+                onPress={fechar}
+                accessibilityRole="button"
+                accessibilityLabel={'Fechar seleção de ' + rotulo}
+              >
+                <Ionicons name="close" size={20} color={CORES.texto} />
+              </Pressable>
+            </View>
+            {opcoes.length === 0 ? (
+              <Text style={estilos.vazio}>{mensagemVazia ?? 'Nenhuma opção disponível.'}</Text>
+            ) : (
+              <FlatList
+                data={opcoes}
+                keyExtractor={(opcao: OpcaoSelect) => opcao.id}
+                style={estilos.lista}
+                renderItem={({ item }: { item: OpcaoSelect }) => {
+                  const ativa = item.id === valorTexto;
+                  return (
+                    <Pressable
+                      style={[estilos.opcao, ativa ? estilos.opcaoAtiva : null]}
+                      onPress={() => escolher(item.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={item.rotulo}
+                      accessibilityState={{ selected: ativa }}
+                    >
+                      <Text style={[estilos.textoOpcao, ativa ? estilos.textoOpcaoAtiva : null]}>{item.rotulo}</Text>
+                      {ativa === true ? <Ionicons name="checkmark" size={18} color={CORES.primario} /> : null}
+                    </Pressable>
+                  );
+                }}
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const estilos = StyleSheet.create({
   bloco: {
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    marginTop: 16,
+    marginTop: ESPACAMENTO.lg,
   },
   rotulo: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#F8FAFC',
-    marginBottom: 8,
-  },
-  contexto: {
-    position: 'relative',
-    zIndex: 10,
-    elevation: 4,
+    color: CORES.texto,
+    marginBottom: ESPACAMENTO.sm,
   },
   campo: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#1E293B',
+    borderColor: CORES.borda,
+    borderRadius: RAIO.medio,
+    paddingHorizontal: ESPACAMENTO.md,
+    backgroundColor: CORES.superficie,
   },
   texto: {
     flex: 1,
     fontSize: 16,
-    color: '#F8FAFC',
-    marginRight: 8,
+    color: CORES.texto,
+    marginRight: ESPACAMENTO.sm,
   },
   textoPlaceholder: {
     flex: 1,
     fontSize: 16,
-    color: '#94A3B8',
-    marginRight: 8,
+    color: CORES.textoSecundario,
+    marginRight: ESPACAMENTO.sm,
   },
-  seta: {
-    fontSize: 12,
-    color: '#94A3B8',
+  fundo: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    padding: ESPACAMENTO.xl,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+  },
+  cartao: {
+    maxHeight: '80%',
+    padding: ESPACAMENTO.lg,
+    borderRadius: RAIO.grande,
+    borderWidth: 1,
+    borderColor: CORES.borda,
+    backgroundColor: CORES.superficie,
+  },
+  cabecalho: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: ESPACAMENTO.md,
+  },
+  titulo: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: CORES.texto,
+  },
+  botaoFechar: {
+    padding: ESPACAMENTO.sm,
   },
   lista: {
-    position: 'absolute',
-    top: 56,
-    left: 0,
-    right: 0,
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    backgroundColor: '#1E293B',
-    zIndex: 20,
-    elevation: 6,
-  },
-  rolagem: {
-    maxHeight: 192,
+    maxHeight: 320,
   },
   opcao: {
-    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: ESPACAMENTO.md,
+    borderRadius: RAIO.pequeno,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: CORES.borda,
+  },
+  opcaoAtiva: {
+    backgroundColor: CORES.superficieElevada,
   },
   textoOpcao: {
+    flex: 1,
     fontSize: 14,
-    color: '#F8FAFC',
+    color: CORES.texto,
+  },
+  textoOpcaoAtiva: {
+    color: CORES.primario,
+    fontWeight: 'bold',
   },
   vazio: {
+    padding: ESPACAMENTO.lg,
     fontSize: 14,
-    color: '#94A3B8',
+    color: CORES.textoSecundario,
     textAlign: 'center',
-    padding: 12,
   },
 });
