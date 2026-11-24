@@ -72,7 +72,7 @@ export default function MenuLateral() {
   const insets = useSafeAreaInsets();
   const [perfil, setPerfil] = useState<PerfilResposta | null>(null);
   const [perfilAberto, setPerfilAberto] = useState<boolean>(false);
-  const deslocamento = useRef(new Animated.Value(1)).current;
+  const deslocamento = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (aberto === false) {
@@ -99,7 +99,7 @@ export default function MenuLateral() {
 
   useEffect(() => {
     Animated.timing(deslocamento, {
-      toValue: aberto === true ? 0 : 1,
+      toValue: aberto === true ? 1 : 0,
       duration: 220,
       useNativeDriver: true,
     }).start();
@@ -155,7 +155,7 @@ export default function MenuLateral() {
 
   const translateX = deslocamento.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -LARGURA_MENU],
+    outputRange: [-LARGURA_MENU, 0],
   });
 
   return (
@@ -247,12 +247,22 @@ export default function MenuLateral() {
 }
 
 const estilos = StyleSheet.create({
-  raiz: { flex: 1, flexDirection: 'row' },
-  fundo: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.75)' },
+  raiz: { flex: 1 },
+  fundo: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+  },
   painel: {
-    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
     borderRightWidth: 1,
-    borderColor: CORES.borda,
+    borderRightColor: CORES.borda,
     backgroundColor: CORES.fundo,
   },
   conteudo: { flex: 1, paddingHorizontal: ESPACAMENTO.lg },
