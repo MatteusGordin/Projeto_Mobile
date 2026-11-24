@@ -4,6 +4,7 @@ import { CORES, ESPACAMENTO, RAIO } from '../tema/cores';
 import { validarCorHex } from '../utils/formatacao';
 
 export type VarianteBotao = 'primario' | 'secundario' | 'perigo' | 'fantasma';
+export type TamanhoBotao = 'padrao' | 'compacto';
 
 interface BotaoPadraoProps {
   titulo: string;
@@ -14,6 +15,7 @@ interface BotaoPadraoProps {
   icone?: keyof typeof Ionicons.glyphMap;
   carregando?: boolean;
   accessibilityLabel?: string;
+  tamanho?: TamanhoBotao;
 }
 
 export default function BotaoPadrao({
@@ -25,21 +27,25 @@ export default function BotaoPadrao({
   icone,
   carregando = false,
   accessibilityLabel,
+  tamanho = 'padrao',
 }: BotaoPadraoProps) {
   const inativo = desabilitado === true || carregando === true;
+  const compacto = tamanho === 'compacto';
   const fundo = cor !== undefined && cor !== '' ? validarCorHex(cor, CORES.primario) : fundoDaVariante(variante);
   const corTexto = textoDaVariante(variante);
   return (
     <TouchableOpacity
       style={[
         estilos.botao,
+        compacto ? estilos.compacto : null,
         { backgroundColor: fundo },
         variante === 'fantasma' ? estilos.fantasma : null,
+        variante === 'secundario' ? estilos.secundario : null,
         inativo ? estilos.inativo : null,
       ]}
       onPress={aoPressionar}
       disabled={Boolean(desabilitado || carregando)}
-      activeOpacity={0.8}
+      activeOpacity={0.82}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? titulo}
       accessibilityState={{ disabled: inativo, busy: carregando }}
@@ -48,8 +54,12 @@ export default function BotaoPadrao({
         <ActivityIndicator size="small" color={corTexto} />
       ) : (
         <>
-          {icone !== undefined ? <Ionicons name={icone} size={18} color={corTexto} /> : null}
-          <Text style={[estilos.texto, { color: corTexto }]}>{titulo}</Text>
+          {icone !== undefined ? (
+            <Ionicons name={icone} size={compacto === true ? 16 : 18} color={corTexto} />
+          ) : null}
+          <Text style={[estilos.texto, compacto ? estilos.textoCompacto : null, { color: corTexto }]}>
+            {titulo}
+          </Text>
         </>
       )}
     </TouchableOpacity>
@@ -87,7 +97,17 @@ const estilos = StyleSheet.create({
     paddingVertical: ESPACAMENTO.md,
     gap: ESPACAMENTO.sm,
   },
+  compacto: {
+    minHeight: 36,
+    paddingHorizontal: ESPACAMENTO.md,
+    paddingVertical: ESPACAMENTO.sm,
+    gap: ESPACAMENTO.xs,
+  },
   fantasma: {
+    borderWidth: 1,
+    borderColor: CORES.borda,
+  },
+  secundario: {
     borderWidth: 1,
     borderColor: CORES.borda,
   },
@@ -98,5 +118,8 @@ const estilos = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  textoCompacto: {
+    fontSize: 13,
   },
 });

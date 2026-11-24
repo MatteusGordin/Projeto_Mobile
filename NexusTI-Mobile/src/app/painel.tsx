@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Cabecalho from '../componentes/Cabecalho';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CardChamado from '../componentes/CardChamado';
 import BotaoPadrao from '../componentes/BotaoPadrao';
 import BadgeStatus from '../componentes/BadgeStatus';
@@ -18,6 +18,7 @@ import type { ChamadoResposta, MetricasChamados, MetricasPrioridades, PerfilResp
 
 export default function PainelScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [chamados, setChamados] = useState<ChamadoResposta[]>([]);
   const [perfil, setPerfil] = useState<PerfilResposta | null>(null);
   const [abertos, setAbertos] = useState<number>(0);
@@ -70,26 +71,6 @@ export default function PainelScreen() {
     router.push('/novo-chamado');
   };
 
-  const irParaChamados = (): void => {
-    router.push('/chamados');
-  };
-
-  const irParaUsuarios = (): void => {
-    router.push('/admin/usuarios');
-  };
-
-  const irParaEquipamentos = (): void => {
-    router.push('/admin/equipamentos');
-  };
-
-  const irParaSetores = (): void => {
-    router.push('/admin/setores');
-  };
-
-  const irParaPrioridades = (): void => {
-    router.push('/admin/prioridades');
-  };
-
   const sair = async (): Promise<void> => {
     await apagarToken();
     await apagarPerfil();
@@ -105,13 +86,14 @@ export default function PainelScreen() {
 
   const entradasPrioridade = Object.entries(porPrioridade);
   const nomeUsuario = perfil !== null && perfil.nome !== '' ? perfil.nome : 'usuário';
-  const ehEquipe = perfil !== null && (perfil.perfil === 'ADMIN' || perfil.perfil === 'TECNICO');
 
   const cabecalhoLista = (
     <View style={estilos.cabecalhoLista}>
-      <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
-      <View style={estilos.saudacao}>
-        <Text style={estilos.ola}>{'Olá, ' + nomeUsuario + '!'}</Text>
+      <View style={estilos.boasVindas}>
+        <View style={estilos.textoBoasVindas}>
+          <Text style={estilos.saudacao}>{'Olá, ' + nomeUsuario + '!'}</Text>
+          <Text style={estilos.subtitulo}>Acompanhe a operação de chamados em tempo real.</Text>
+        </View>
         {perfil !== null ? <BadgeStatus tipo="perfil" valor={perfil.perfil} /> : null}
         <Pressable
           style={estilos.botaoPerfil}
@@ -122,53 +104,42 @@ export default function PainelScreen() {
           <Ionicons name="person-circle-outline" size={30} color={CORES.primario} />
         </Pressable>
       </View>
-      <View style={estilos.metricas}>
-        <View style={estilos.cartaoMetrica}>
-          <Ionicons name="alert-circle-outline" size={20} color={CORES.primario} />
-          <Text style={estilos.numeroMetrica}>{String(abertos)}</Text>
-          <Text style={estilos.rotuloMetrica}>Chamados abertos</Text>
+      <BotaoPadrao
+        titulo="Abrir Novo Chamado"
+        aoPressionar={irParaNovoChamado}
+        icone="add-circle-outline"
+      />
+      <View style={estilos.kpis}>
+        <View style={estilos.cartaoKpi}>
+          <Ionicons name="alert-circle-outline" size={20} color={CORES.atencao} />
+          <Text style={estilos.numeroKpi}>{String(abertos)}</Text>
+          <Text style={estilos.rotuloKpi}>Abertos</Text>
         </View>
-        <View style={estilos.cartaoMetrica}>
+        <View style={estilos.cartaoKpi}>
           <Ionicons name="checkmark-circle-outline" size={20} color={CORES.sucesso} />
-          <Text style={estilos.numeroMetrica}>{String(fechados)}</Text>
-          <Text style={estilos.rotuloMetrica}>Chamados fechados</Text>
+          <Text style={estilos.numeroKpi}>{String(fechados)}</Text>
+          <Text style={estilos.rotuloKpi}>Fechados</Text>
+        </View>
+        <View style={estilos.cartaoKpi}>
+          <Ionicons name="pie-chart-outline" size={20} color={CORES.primario} />
+          <Text style={estilos.numeroKpi}>{String(entradasPrioridade.length)}</Text>
+          <Text style={estilos.rotuloKpi}>Prioridades</Text>
         </View>
       </View>
       {entradasPrioridade.length > 0 ? (
-        <View style={estilos.bloco}>
-          <Text style={estilos.tituloSecao}>Por prioridade</Text>
-          <View style={estilos.listaPrioridades}>
-            {entradasPrioridade.map(([chave, total]: [string, number]) => (
-              <View key={chave} style={estilos.cartaoPrioridade}>
-                <BadgeStatus tipo="prioridade" valor={chave} rotulo={chave === '' ? 'Sem prioridade' : chave} />
-                <Text style={estilos.totalPrioridade}>{String(total)}</Text>
-              </View>
-            ))}
-          </View>
+        <View style={estilos.distribuicao}>
+          {entradasPrioridade.slice(0, 4).map(([chave, total]: [string, number]) => (
+            <BadgeStatus
+              key={chave}
+              tipo="prioridade"
+              valor={chave}
+              rotulo={(chave === '' ? 'Sem prioridade' : chave) + ': ' + String(total)}
+            />
+          ))}
         </View>
       ) : null}
-      <View style={estilos.bloco}>
-        <Text style={estilos.tituloSecao}>Atalhos</Text>
-        <BotaoPadrao titulo="Novo chamado" aoPressionar={irParaNovoChamado} icone="add-circle-outline" />
-        <BotaoPadrao
-          titulo="Ver todos os chamados"
-          aoPressionar={irParaChamados}
-          icone="list-outline"
-          variante="secundario"
-        />
-      </View>
-      {ehEquipe === true ? (
-        <View style={estilos.admin}>
-          <Text style={estilos.tituloSecao}>Administração</Text>
-          {perfil !== null && perfil.perfil === 'ADMIN' ? (
-            <BotaoPadrao titulo="Gerenciar usuários" aoPressionar={irParaUsuarios} icone="people-outline" variante="fantasma" />
-          ) : null}
-          <BotaoPadrao titulo="Gerenciar equipamentos" aoPressionar={irParaEquipamentos} icone="hardware-chip-outline" variante="fantasma" />
-          <BotaoPadrao titulo="Gerenciar setores" aoPressionar={irParaSetores} icone="grid-outline" variante="fantasma" />
-          <BotaoPadrao titulo="Gerenciar prioridades" aoPressionar={irParaPrioridades} icone="flag-outline" variante="fantasma" />
-        </View>
-      ) : null}
-      <Text style={estilos.tituloSecao}>Chamados recentes</Text>
+      <Text style={estilos.tituloSecao}>Últimos Chamados</Text>
+      <View style={estilos.separadorTitulo} />
     </View>
   );
 
@@ -176,7 +147,7 @@ export default function PainelScreen() {
     <>
       <FlatList
         style={estilos.tela}
-        contentContainerStyle={estilos.container}
+        contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
         data={chamados}
         keyExtractor={(item: ChamadoResposta) => String(item.id)}
         renderItem={({ item }: { item: ChamadoResposta }) => (
@@ -191,7 +162,7 @@ export default function PainelScreen() {
             aoPressionar={() => irParaDetalhe(item.id)}
           />
         )}
-        ItemSeparatorComponent={() => <View style={estilos.separador} />}
+        ItemSeparatorComponent={() => <View style={estilos.separadorItem} />}
         ListHeaderComponent={cabecalhoLista}
         ListEmptyComponent={
           carregando === true ? (
@@ -225,97 +196,35 @@ export default function PainelScreen() {
 }
 
 const estilos = StyleSheet.create({
-  tela: {
-    flex: 1,
-    backgroundColor: CORES.fundo,
-  },
-  container: {
-    padding: ESPACAMENTO.xl,
-    paddingBottom: ESPACAMENTO.xxl,
-    backgroundColor: CORES.fundo,
-  },
-  cabecalhoLista: {
-    gap: ESPACAMENTO.md,
-    marginBottom: ESPACAMENTO.lg,
-  },
-  saudacao: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ESPACAMENTO.md,
-  },
-  ola: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: CORES.texto,
-  },
-  botaoPerfil: {
-    padding: ESPACAMENTO.xs,
-  },
-  metricas: {
-    flexDirection: 'row',
-    gap: ESPACAMENTO.md,
-  },
-  cartaoMetrica: {
+  tela: { flex: 1, backgroundColor: CORES.fundo },
+  container: { padding: ESPACAMENTO.xl, backgroundColor: CORES.fundo },
+  cabecalhoLista: { gap: ESPACAMENTO.md, marginBottom: ESPACAMENTO.lg },
+  boasVindas: { flexDirection: 'row', alignItems: 'center', gap: ESPACAMENTO.md },
+  textoBoasVindas: { flex: 1, gap: ESPACAMENTO.xs },
+  saudacao: { fontSize: 20, fontWeight: 'bold', color: CORES.texto },
+  subtitulo: { fontSize: 12, color: CORES.textoSecundario },
+  botaoPerfil: { padding: ESPACAMENTO.xs },
+  kpis: { flexDirection: 'row', gap: ESPACAMENTO.sm },
+  cartaoKpi: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: ESPACAMENTO.xs,
-    padding: ESPACAMENTO.lg,
+    padding: ESPACAMENTO.md,
     borderRadius: RAIO.medio,
     borderWidth: 1,
     borderColor: CORES.borda,
     backgroundColor: CORES.superficie,
   },
-  numeroMetrica: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: CORES.texto,
-  },
-  rotuloMetrica: {
-    fontSize: 12,
-    color: CORES.textoSecundario,
-    textAlign: 'center',
-  },
-  bloco: {
-    gap: ESPACAMENTO.sm,
-  },
+  numeroKpi: { fontSize: 22, fontWeight: 'bold', color: CORES.texto },
+  rotuloKpi: { fontSize: 11, color: CORES.textoSecundario, textAlign: 'center' },
+  distribuicao: { flexDirection: 'row', flexWrap: 'wrap', gap: ESPACAMENTO.sm },
   tituloSecao: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
     color: CORES.texto,
     marginTop: ESPACAMENTO.sm,
   },
-  listaPrioridades: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: ESPACAMENTO.sm,
-  },
-  cartaoPrioridade: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: ESPACAMENTO.sm,
-    paddingHorizontal: ESPACAMENTO.md,
-    paddingVertical: ESPACAMENTO.sm,
-    borderRadius: RAIO.medio,
-    borderWidth: 1,
-    borderColor: CORES.borda,
-    backgroundColor: CORES.superficie,
-  },
-  totalPrioridade: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: CORES.texto,
-  },
-  admin: {
-    gap: ESPACAMENTO.sm,
-    padding: ESPACAMENTO.lg,
-    borderRadius: RAIO.medio,
-    borderWidth: 1,
-    borderColor: CORES.borda,
-    backgroundColor: CORES.superficie,
-  },
-  separador: {
-    height: ESPACAMENTO.md,
-  },
+  separadorTitulo: { height: 1, backgroundColor: CORES.borda, marginTop: ESPACAMENTO.xs },
+  separadorItem: { height: ESPACAMENTO.md },
 });

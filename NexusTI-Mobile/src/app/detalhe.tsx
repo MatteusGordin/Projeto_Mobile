@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
@@ -45,6 +46,7 @@ function mensagemErro(falha: unknown, acao: AcaoChamado, padrao: string): string
 
 export default function DetalheScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const parametros = useLocalSearchParams();
   const [chamado, setChamado] = useState<ChamadoResposta | null>(null);
   const [perfil, setPerfil] = useState<PerfilResposta | null>(null);
@@ -168,7 +170,10 @@ export default function DetalheScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={24}
     >
-      <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Cabecalho titulo="Detalhe do chamado" subtitulo="Informações completas" />
         {carregando === true ? (
           <EstadoCarregando mensagem="Carregando chamado..." />

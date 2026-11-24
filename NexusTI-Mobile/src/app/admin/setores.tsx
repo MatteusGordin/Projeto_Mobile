@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Cabecalho from '../../componentes/Cabecalho';
 import InputPadrao from '../../componentes/InputPadrao';
 import BotaoPadrao from '../../componentes/BotaoPadrao';
@@ -26,6 +27,7 @@ import type { Setor } from '../../types/models';
 
 export default function AdminSetoresScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [setores, setSetores] = useState<Setor[]>([]);
   const [busca, setBusca] = useState<string>('');
   const [carregando, setCarregando] = useState<boolean>(true);
@@ -158,7 +160,7 @@ export default function AdminSetoresScreen() {
     <>
       <FlatList
         style={estilos.tela}
-        contentContainerStyle={estilos.container}
+        contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
         data={filtrados}
         keyExtractor={(item: Setor) => String(item.id)}
         renderItem={({ item }: { item: Setor }) => (
@@ -167,10 +169,10 @@ export default function AdminSetoresScreen() {
             <Text style={estilos.linha}>{'Sigla: ' + (item.sigla ?? 'Não informada')}</Text>
             <View style={estilos.acoes}>
               <View style={estilos.acao}>
-                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" />
+                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" tamanho="compacto" />
               </View>
               <View style={estilos.acao}>
-                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" />
+                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" tamanho="compacto" />
               </View>
             </View>
           </View>

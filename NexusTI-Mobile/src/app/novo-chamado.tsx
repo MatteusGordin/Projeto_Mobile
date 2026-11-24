@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import InputPadrao from '../componentes/InputPadrao';
@@ -34,6 +35,7 @@ function mensagemErro(falha: unknown): string {
 
 export default function NovoChamadoScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [titulo, setTitulo] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
   const [idEquipamentoTexto, setIdEquipamentoTexto] = useState<string>('');
@@ -153,7 +155,10 @@ export default function NovoChamadoScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={24}
     >
-      <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Cabecalho titulo="Novo chamado" subtitulo="Informe o equipamento e o problema" />
         <View style={estilos.formulario}>
           <InputPadrao

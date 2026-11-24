@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import Cabecalho from '../componentes/Cabecalho';
 import CardChamado from '../componentes/CardChamado';
@@ -45,6 +46,7 @@ function semAcento(texto: string): string {
 
 export default function ChamadosScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [chamados, setChamados] = useState<ChamadoResposta[]>([]);
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [filtroPrioridade, setFiltroPrioridade] = useState<string>('');
@@ -217,7 +219,7 @@ export default function ChamadosScreen() {
   return (
     <FlatList
       style={estilos.tela}
-      contentContainerStyle={estilos.container}
+      contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
       data={visiveis}
       keyExtractor={(item: ChamadoResposta) => String(item.id)}
       renderItem={({ item }: { item: ChamadoResposta }) => (

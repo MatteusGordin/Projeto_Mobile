@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Cabecalho from '../../componentes/Cabecalho';
 import InputPadrao from '../../componentes/InputPadrao';
 import BotaoPadrao from '../../componentes/BotaoPadrao';
@@ -43,6 +44,7 @@ const OPCOES_TIPO: OpcaoSelect[] = [
 
 export default function AdminEquipamentosScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [opcoesSetores, setOpcoesSetores] = useState<OpcaoSelect[]>([]);
   const [busca, setBusca] = useState<string>('');
@@ -209,7 +211,7 @@ export default function AdminEquipamentosScreen() {
     <>
       <FlatList
         style={estilos.tela}
-        contentContainerStyle={estilos.container}
+        contentContainerStyle={[estilos.container, { paddingBottom: insets.bottom + ESPACAMENTO.xl }]}
         data={filtrados}
         keyExtractor={(item: Equipamento) => String(item.id)}
         renderItem={({ item }: { item: Equipamento }) => (
@@ -220,10 +222,10 @@ export default function AdminEquipamentosScreen() {
             <Text style={estilos.linha}>{'Setor: ' + (nomesSetores.get(String(item.idSetor)) ?? 'Não informado')}</Text>
             <View style={estilos.acoes}>
               <View style={estilos.acao}>
-                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" />
+                <BotaoPadrao titulo="Editar" aoPressionar={() => iniciarEdicao(item)} icone="create-outline" variante="fantasma" tamanho="compacto" />
               </View>
               <View style={estilos.acao}>
-                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" />
+                <BotaoPadrao titulo="Excluir" aoPressionar={() => confirmarExclusao(item)} icone="trash-outline" variante="perigo" tamanho="compacto" />
               </View>
             </View>
           </View>
