@@ -1,4 +1,4 @@
-# Nexus TI Mobile — v1.0.0
+# NexusTI — v1.0.0
 
 Gestão de chamados de TI para a Prefeitura de Benevides. Aplicativo móvel com paridade total à versão Web: abertura e ciclo de vida de chamados, dashboard operacional e módulos administrativos com controle de acesso por perfil.
 

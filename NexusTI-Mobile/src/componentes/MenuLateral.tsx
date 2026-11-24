@@ -182,7 +182,7 @@ export default function MenuLateral() {
                     <Ionicons name="sparkles-outline" size={22} color={CORES.primario} />
                   </View>
                   <View style={estilos.identidade}>
-                    <Text style={estilos.nomeApp}>Nexus TI</Text>
+                    <Text style={estilos.nomeApp}>NexusTI</Text>
                     <Text style={estilos.subtituloApp}>HelpDesk Municipal</Text>
                   </View>
                 </View>

@@ -115,7 +115,7 @@ export default function LoginScreen() {
       keyboardVerticalOffset={24}
     >
       <ScrollView contentContainerStyle={estilos.container} keyboardShouldPersistTaps="handled">
-        <Cabecalho titulo="Nexus TI" subtitulo="HelpDesk Municipal" />
+        <Cabecalho titulo="NexusTI" subtitulo="HelpDesk Municipal" />
         {verificando === true ? (
           <EstadoCarregando mensagem="Verificando sessão..." />
         ) : (
